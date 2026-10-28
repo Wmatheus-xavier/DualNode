@@ -279,7 +279,7 @@ def print_room(players):
 
 # ------------------------------------------------------------------- demo
 
-def _demo():
+def demo():
     """Demonstracao LOCAL, sem rede, so para testar a tela.
 
     A 'simulacao' abaixo e apenas um enfeite para gerar registros de ciclo;
@@ -349,4 +349,4 @@ def _demo():
 
 
 if __name__ == "__main__":
-    _demo()
+    demo()
