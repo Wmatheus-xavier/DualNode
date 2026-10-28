@@ -22,7 +22,6 @@ Para ver a tela funcionando sem rede:  python -m peer.ui
 """
 
 import curses
-import time
 
 # ---------------------------------------------------------------- constantes
 
@@ -84,7 +83,7 @@ class GameView:
         for pid, x, y in rec["mv"]:
             self.heads[pid] = (x, y)
             self.cells[(x, y)] = pid
-        for pid, reason in repython -m peer.uic["el"]:
+        for pid, reason in rec["el"]:
             self.alive[pid] = False
             texto = f"ciclo {rec['n']}: {self.name(pid)} {REASON_TEXT.get(reason, reason)}"
             self.events.append(texto)
@@ -275,78 +274,3 @@ def print_room(players):
     print("\nJogadores na sala:")
     for p in players:
         print(f"  [{p['slot']}] {p['name']}")
-
-
-# ------------------------------------------------------------------- demo
-
-def _demo():
-    """Demonstracao LOCAL, sem rede, so para testar a tela.
-
-    A 'simulacao' abaixo e apenas um enfeite para gerar registros de ciclo;
-    NAO e a logica oficial do jogo (essa fica em common/game_logic.py).
-    """
-    import random
-    from collections import Counter
-
-    W, H = 40, 20
-    inicio = {0: (5, 5, "R"), 1: (34, 14, "L"), 2: (20, 1, "D")}
-    delta = {"U": (0, -1), "D": (0, 1), "L": (-1, 0), "R": (1, 0)}
-    oposto = {"U": "D", "D": "U", "L": "R", "R": "L"}
-
-    view = GameView(0, {0: "Voce", 1: "Bot1", 2: "Bot2"})
-    view.load_welcome({"width": W, "height": H, "players": [
-        {"pid": p, "x": x, "y": y, "dir": d} for p, (x, y, d) in inicio.items()]})
-    direcao = {p: d for p, (_, _, d) in inicio.items()}
-
-    def livre(pid, d):
-        x, y = view.heads[pid]
-        nx, ny = x + delta[d][0], y + delta[d][1]
-        return 0 <= nx < W and 0 <= ny < H and (nx, ny) not in view.cells
-
-    with TerminalUI() as ui:
-        n = 0
-        ui.draw(view)
-        while view.result is None:
-            tecla = ui.poll_input()
-            if tecla == "QUIT":
-                return
-            if tecla and tecla != oposto[direcao[0]]:
-                direcao[0] = tecla
-            for bot in (1, 2):
-                if view.alive[bot] and (not livre(bot, direcao[bot]) or random.random() < 0.08):
-                    opcoes = [d for d in "UDLR" if d != oposto[direcao[bot]] and livre(bot, d)]
-                    if opcoes:
-                        direcao[bot] = random.choice(opcoes)
-
-            n += 1
-            alvos = {}
-            for p in view.alive:
-                if view.alive[p]:
-                    x, y = view.heads[p]
-                    alvos[p] = (x + delta[direcao[p]][0], y + delta[direcao[p]][1])
-            cont = Counter(alvos.values())
-            mv, el = [], []
-            for p, (x, y) in alvos.items():
-                if not (0 <= x < W and 0 <= y < H):
-                    el.append([p, "WALL"])
-                elif (x, y) in view.cells:
-                    el.append([p, "TRAIL"])
-                elif cont[(x, y)] > 1:
-                    el.append([p, "HEAD"])
-                else:
-                    mv.append([p, x, y])
-            vivas = sum(view.alive.values()) - len(el)
-            fim = None
-            if vivas == 0:
-                fim = {"result": "DRAW"}
-            elif vivas == 1:
-                vencedor = [p for p in alvos if p not in [e[0] for e in el]][0]
-                fim = {"result": "WIN", "winner": vencedor}
-            view.apply_record({"n": n, "mv": mv, "el": el, "end": fim})
-            ui.draw(view)
-            time.sleep(0.1)
-        ui.wait_key()
-
-
-if __name__ == "__main__":
-    _demo()
