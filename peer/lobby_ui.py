@@ -1,3 +1,9 @@
+def _cabecalho():
+    clear()
+    print(box("D U A L N O D E", ["Motos de luz em rede (TCP + UDP)"]))
+    print()
+
+
 def main_menu(nome, lobby_host, lobby_port):
     """Menu principal. Retorna 0 (criar), 1 (listar/entrar) ou 2 (sair)."""
     _cabecalho()
