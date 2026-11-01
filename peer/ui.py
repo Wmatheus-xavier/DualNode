@@ -289,7 +289,7 @@ def demo():
     from collections import Counter
 
     W, H = 40, 20
-    inicio = {0: (5, 5, "R"), 1: (34, 14, "L"), 2: (20, 1, "D")}
+    inicio = {0: (5, 5, "R")} """, 1: (34, 14, "L"), 2: (20, 1, "D") os testes"""
     delta = {"U": (0, -1), "D": (0, 1), "L": (-1, 0), "R": (1, 0)}
     oposto = {"U": "D", "D": "U", "L": "R", "R": "L"}
 
