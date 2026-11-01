@@ -502,10 +502,11 @@ Registrar logs/capturas de cada cenário no relatório técnico.
 
 | Nome | Matrícula | Responsabilidades |
 |------|-----------|-------------------|
-| wmatheus-xavier|252024622|
-| |
-| |
-| |
+| Washington Xavier|252024622|
+| LUIZ EDUARDO|252009134|
+| PABLO RAFAEL|221003986|
+| SARA DA SILVA|202038281|
+|VITOR IVAN|231036309|
 
 ---
 
