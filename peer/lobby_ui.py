@@ -1,3 +1,10 @@
+import sys
+
+from peer.ui import ask_choice, ask_int, ask_text
+
+WIDTH = 58
+
+
 def clear():
     """Limpa o terminal (so se for um terminal de verdade)."""
     if sys.stdout.isatty():
