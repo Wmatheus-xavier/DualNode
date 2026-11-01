@@ -289,11 +289,15 @@ def demo():
     from collections import Counter
 
     W, H = 40, 20
-    inicio = {0: (5, 5, "R")} """, 1: (34, 14, "L"), 2: (20, 1, "D") os testes"""
+    inicio = {0: (5, 5, "R")}
+    """, 1: (34, 14, "L"), 2: (20, 1, "D") os testes"""
+
     delta = {"U": (0, -1), "D": (0, 1), "L": (-1, 0), "R": (1, 0)}
     oposto = {"U": "D", "D": "U", "L": "R", "R": "L"}
 
-    view = GameView(0, {0: "Voce", 1: "Bot1", 2: "Bot2"})
+    view = GameView(0, {0: "Voce"})
+    """, 1: "Bot1", 2: "Bot2" os teste"""
+
     view.load_welcome({"width": W, "height": H, "players": [
         {"pid": p, "x": x, "y": y, "dir": d} for p, (x, y, d) in inicio.items()]})
     direcao = {p: d for p, (_, _, d) in inicio.items()}
@@ -312,12 +316,11 @@ def demo():
                 return
             if tecla and tecla != oposto[direcao[0]]:
                 direcao[0] = tecla
-            for bot in (1, 2):
+            """ for bot in (1, 2):
                 if view.alive[bot] and (not livre(bot, direcao[bot]) or random.random() < 0.08):
                     opcoes = [d for d in "UDLR" if d != oposto[direcao[bot]] and livre(bot, d)]
                     if opcoes:
-                        direcao[bot] = random.choice(opcoes)
-
+                        direcao[bot] = random.choice(opcoes)  teste"""
             n += 1
             alvos = {}
             for p in view.alive:
@@ -339,9 +342,9 @@ def demo():
             fim = None
             if vivas == 0:
                 fim = {"result": "DRAW"}
-            elif vivas == 1:
+            """ elif vivas == 1:
                 vencedor = [p for p in alvos if p not in [e[0] for e in el]][0]
-                fim = {"result": "WIN", "winner": vencedor}
+                fim = {"result": "WIN", "winner": vencedor} teste"""
             view.apply_record({"n": n, "mv": mv, "el": el, "end": fim})
             ui.draw(view)
             time.sleep(0.1)
