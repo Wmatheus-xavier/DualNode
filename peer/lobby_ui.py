@@ -1,9 +1,35 @@
+"""
+Telas em ASCII do lobby do DualNode.
+
+SOMENTE visual: nenhum codigo de rede aqui. Cada funcao recebe dados ja
+prontos (os mesmos campos das mensagens do protocolo) e mostra na tela.
+
+Funcoes de ENTRADA (perguntam e devolvem o que o usuario escolheu):
+    main_menu(nome, lobby_host, lobby_port)  -> 0 criar | 1 listar/entrar | 2 sair
+    create_match_form()                      -> (nome_da_sala, max_players)
+    choose_match(matches)                    -> match_id escolhido ou None
+
+Funcoes de SAIDA (so desenham):
+    screen_connecting(host, port)
+    screen_room(sala, players, max_players, i_am_host, notice="")
+    screen_starting(players)
+    screen_notice(titulo, texto)
+
+Formato dos dados (iguais aos do protocolo, README secoes 9):
+    matches = [{"match_id","name","host_name","players","max_players"}, ...]
+    players = [{"slot": 0, "name": "Alice"}, ...]
+
+Para ver todas as telas sem rede:  python -m peer.lobby_ui
+"""
+
 import sys
 
 from peer.ui import ask_choice, ask_int, ask_text
 
 WIDTH = 58
 
+
+# ---------------------------------------------------------------- utilitarios
 
 def clear():
     """Limpa o terminal (so se for um terminal de verdade)."""
@@ -29,6 +55,8 @@ def _cabecalho():
     print(box("D U A L N O D E", ["Motos de luz em rede (TCP + UDP)"]))
     print()
 
+
+# ------------------------------------------------------------ telas de entrada
 
 def main_menu(nome, lobby_host, lobby_port):
     """Menu principal. Retorna 0 (criar), 1 (listar/entrar) ou 2 (sair)."""
@@ -71,6 +99,8 @@ def choose_match(matches):
             return matches[int(txt) - 1]["match_id"]
         print("Numero invalido.")
 
+
+# -------------------------------------------------------------- telas de saida
 
 def screen_connecting(host, port):
     _cabecalho()
@@ -115,6 +145,8 @@ def screen_notice(titulo, texto):
     input("\nENTER para continuar... ")
 
 
+# --------------------------------------------------------------------- demo
+
 def demo():
     """Passeia por todas as telas com dados falsos, sem rede."""
     abertas = [
@@ -150,4 +182,3 @@ def demo():
 
 if __name__ == "__main__":
     demo()
-
