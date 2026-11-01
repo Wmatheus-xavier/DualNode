@@ -502,7 +502,7 @@ Registrar logs/capturas de cada cenário no relatório técnico.
 
 | Nome | Matrícula | Responsabilidades |
 |------|-----------|-------------------|
-| wmatheus-xavier|
+| wmatheus-xavier|252024622|
 | |
 | |
 | |
