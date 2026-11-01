@@ -1,3 +1,9 @@
+def clear():
+    """Limpa o terminal (so se for um terminal de verdade)."""
+    if sys.stdout.isatty():
+        print("\033[2J\033[H", end="")
+
+
 def box(titulo, linhas, largura=WIDTH):
     """Monta uma caixa ASCII e devolve o texto pronto."""
     interno = largura - 2
