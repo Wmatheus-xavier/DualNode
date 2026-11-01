@@ -1,3 +1,46 @@
+def screen_connecting(host, port):
+    _cabecalho()
+    print(box("CONECTANDO", [f"Conectando ao lobby {host}:{port} ..."]))
+
+
+def screen_room(sala, players, max_players, i_am_host, notice=""):
+    """Sala de espera. Redesenhe sempre que chegar PLAYER_JOINED/PLAYER_LEFT."""
+    _cabecalho()
+    por_slot = {p["slot"]: p["name"] for p in players}
+    linhas = []
+    for slot in range(max_players):
+        if slot in por_slot:
+            marca = "  (host)" if slot == 0 else ""
+            linhas.append(f"[{slot}] {por_slot[slot]}{marca}")
+        else:
+            linhas.append(f"[{slot}] ... aguardando jogador ...")
+    print(box(f"SALA: {sala}  ({len(players)}/{max_players})", linhas))
+    print()
+
+    if i_am_host:
+        if len(players) >= 3:
+            print("  ENTER = iniciar a partida     q + ENTER = cancelar")
+        else:
+            print("  Minimo de 3 jogadores para iniciar.   q + ENTER = cancelar")
+    else:
+        print("  Aguardando o host iniciar...          q + ENTER = sair da sala")
+    if notice:
+        print(f"\n  >> {notice}")
+
+
+def screen_starting(players):
+    _cabecalho()
+    nomes = [f"[{p['slot']}] {p['name']}" for p in sorted(players, key=lambda p: p["slot"])]
+    print(box("PARTIDA INICIANDO!", nomes + ["", "Preparando a arena..."]))
+
+
+def screen_notice(titulo, texto):
+    """Aviso generico: erro do lobby, partida cancelada, lobby indisponivel etc."""
+    _cabecalho()
+    print(box(titulo, texto.split("\n")))
+    input("\nENTER para continuar... ")
+
+
 def demo():
     """Passeia por todas as telas com dados falsos, sem rede."""
     abertas = [
