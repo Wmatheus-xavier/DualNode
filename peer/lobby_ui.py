@@ -1,3 +1,16 @@
+def box(titulo, linhas, largura=WIDTH):
+    """Monta uma caixa ASCII e devolve o texto pronto."""
+    interno = largura - 2
+    saida = ["+" + "-" * interno + "+"]
+    if titulo:
+        saida.append("|" + titulo.center(interno) + "|")
+        saida.append("+" + "-" * interno + "+")
+    for linha in linhas:
+        saida.append("| " + linha[:interno - 2].ljust(interno - 2) + " |")
+    saida.append("+" + "-" * interno + "+")
+    return "\n".join(saida)
+
+
 def _cabecalho():
     clear()
     print(box("D U A L N O D E", ["Motos de luz em rede (TCP + UDP)"]))
