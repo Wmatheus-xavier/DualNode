@@ -1,3 +1,45 @@
+def main_menu(nome, lobby_host, lobby_port):
+    """Menu principal. Retorna 0 (criar), 1 (listar/entrar) ou 2 (sair)."""
+    _cabecalho()
+    print(box("LOBBY", [f"Jogador: {nome}",
+                        f"Lobby:   {lobby_host}:{lobby_port}"]))
+    return ask_choice("Menu", ["Criar partida",
+                               "Listar partidas / entrar",
+                               "Sair"])
+
+
+def create_match_form():
+    """Pergunta os dados da sala. Retorna (nome_da_sala, max_players)."""
+    _cabecalho()
+    print(box("CRIAR PARTIDA", ["Voce sera o host da partida."]))
+    nome = ask_text("Nome da sala", "sala1")
+    maximo = ask_int("Maximo de jogadores", 3, 4)
+    return nome, maximo
+
+
+def choose_match(matches):
+    """Mostra as partidas abertas. Retorna o match_id escolhido ou None."""
+    _cabecalho()
+    if not matches:
+        print(box("PARTIDAS ABERTAS", ["(nenhuma partida aberta no momento)"]))
+        input("\nENTER para voltar... ")
+        return None
+
+    linhas = [f"{'#':<3}{'Sala':<14}{'Host':<12}{'Jogadores'}"]
+    for i, m in enumerate(matches, 1):
+        linhas.append(f"{i:<3}{m['name']:<14}{m['host_name']:<12}"
+                      f"{m['players']}/{m['max_players']}")
+    print(box("PARTIDAS ABERTAS", linhas))
+
+    while True:
+        txt = input("\nNumero da partida (ENTER volta): ").strip()
+        if txt == "":
+            return None
+        if txt.isdigit() and 1 <= int(txt) <= len(matches):
+            return matches[int(txt) - 1]["match_id"]
+        print("Numero invalido.")
+
+
 def screen_connecting(host, port):
     _cabecalho()
     print(box("CONECTANDO", [f"Conectando ao lobby {host}:{port} ..."]))
