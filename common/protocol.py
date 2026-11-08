@@ -1,4 +1,47 @@
+# common/protocol.py
 import json
+
+PROTOCOL_VERSION = 1
+MAX_UDP_SIZE = 1200
+MAX_LINE_SIZE = 4096
+VALID_DIRS = ("U", "D", "L", "R")
+
+
+REQUIRED_UDP = {
+    # peer -> host
+    "HELLO": {"m": str, "pid": int},
+    "INPUT": {"m": str, "pid": int, "iseq": int, "dir": str, "ack": int},
+
+    # host -> peer
+    "WELCOME": {"m": str, "state": dict, "countdown_ms": int},
+    "TICK": {"m": str, "recs": list},
+    "ABORT": {"m": str, "reason": str},
+}
+
+REQUIRED_TCP = {
+    # jogador -> lobby
+    "REGISTER": {"name": str, "udp_port": int},        # udp_host é opcional
+    "CREATE_MATCH": {"name": str, "max_players": int},
+    "LIST_MATCHES": {},
+    "JOIN_MATCH": {"match_id": str},
+    "LEAVE_MATCH": {},
+    "START_MATCH": {},
+    "MATCH_END": {"winner": (int, type(None))},        # pid ou None (empate)
+    "PING": {},
+    "PONG": {},
+
+    # lobby -> jogador
+    "REGISTER_OK": {"player_id": (int, str)},          # README não fixa o tipo
+    "MATCH_CREATED": {"match_id": str, "slot": int},
+    "MATCH_LIST": {"matches": list},
+    "JOIN_OK": {"match_id": str, "slot": int, "players": list},
+    "PLAYER_JOINED": {"slot": int, "name": str},
+    "PLAYER_LEFT": {"slot": int, "name": str},
+    "MATCH_CANCELLED": {"reason": str},
+    "MATCH_START": {"match_id": str, "host_slot": int,
+                    "config": dict, "players": list},
+    "ERROR": {"code": str, "msg": str},
+}
 
 
 def _tipo_ok(valor, esperado):
@@ -26,6 +69,8 @@ def _validar(msg, tabela):
     return msg
 
 
+# ---------- UDP: um objeto JSON por datagrama ----------
+
 def encode(msg):
     """dict -> bytes (um datagrama UDP)."""
     return json.dumps(msg, separators=(",", ":")).encode("utf-8")
@@ -40,46 +85,44 @@ def decode(data):
     except (UnicodeDecodeError, ValueError):
         return None
     return _validar(msg, REQUIRED_UDP)
-# common/protocol.py
 
 
-PROTOCOL_VERSION = 1
-MAX_UDP_SIZE = 1200
-MAX_LINE_SIZE = 4096
-VALID_DIRS = ("U", "D", "L", "R")
+# ---------- TCP: um objeto JSON por linha ----------
+
+class LineTooLong(Exception):
+    """Linha acumulada passou de MAX_LINE_SIZE sem '\\n'."""
 
 
-REQUIRED_UDP = {
-    # peer -> host
-    "HELLO": {"m": str, "pid": int},
-    "INPUT": {"m": str, "pid": int, "iseq": int, "dir": str, "ack": int},
+def encode_line(msg):
+    """dict -> bytes (JSON + '\\n') para enviar pelo TCP."""
+    return json.dumps(msg, separators=(",", ":")).encode("utf-8") + b"\n"
 
-    # host -> peer
-    "WELCOME": {"m": str, "state": dict, "countdown_ms": int},
-    "TICK": {"m": str, "recs": list},
-    "ABORT": {"m": str, "reason": str},
-}
-REQUIRED_TCP = {
-    # jogador -> lobby
-    "REGISTER": {"name": str, "udp_port": int},        # udp_host é opcional
-    "CREATE_MATCH": {"name": str, "max_players": int},
-    "LIST_MATCHES": {},
-    "JOIN_MATCH": {"match_id": str},
-    "LEAVE_MATCH": {},
-    "START_MATCH": {},
-    "MATCH_END": {"winner": (int, type(None))},        # pid ou None (empate)
-    "PING": {},
-    "PONG": {},
 
-    # lobby -> jogador
-    "REGISTER_OK": {"player_id": (int, str)},          # README não fixa o tipo
-    "MATCH_CREATED": {"match_id": str, "slot": int},
-    "MATCH_LIST": {"matches": list},
-    "JOIN_OK": {"match_id": str, "slot": int, "players": list},
-    "PLAYER_JOINED": {"slot": int, "name": str},
-    "PLAYER_LEFT": {"slot": int, "name": str},
-    "MATCH_CANCELLED": {"reason": str},
-    "MATCH_START": {"match_id": str, "host_slot": int,
-                    "config": dict, "players": list},
-    "ERROR": {"code": str, "msg": str},
-}
+def decode_line(linha):
+    """Uma linha (bytes, sem '\\n') -> dict válido do lobby, ou None."""
+    try:
+        msg = json.loads(linha.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None
+    return _validar(msg, REQUIRED_TCP)
+
+
+class LineBuffer:
+    """Acumula bytes do TCP e devolve as linhas completas."""
+
+    def __init__(self):
+        self._buf = b""
+
+    def feed(self, data):
+        """Recebe bytes; devolve lista de dicts (ou None para linha inválida)."""
+        self._buf += data
+        resultado = []
+        while b"\n" in self._buf:
+            linha, self._buf = self._buf.split(b"\n", 1)
+            if len(linha) > MAX_LINE_SIZE:
+                raise LineTooLong()
+            if linha.strip():
+                resultado.append(decode_line(linha))
+        if len(self._buf) > MAX_LINE_SIZE:
+            raise LineTooLong()
+        return resultado
