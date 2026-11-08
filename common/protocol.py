@@ -232,3 +232,28 @@ def match_start(match_id, host_slot, config, players):
 
 def error(code, msg):
     return _base("ERROR", code=code, msg=msg)
+# ---------- Diagnóstico de linha TCP (para o lobby escolher o ERROR certo) ----------
+
+def classify_line(linha):
+    """Explica por que uma linha TCP foi rejeitada.
+
+    Devolve (msg, None) se válida, ou (None, codigo) com codigo em
+    "BAD_FORMAT" (não é JSON/objeto/sem 'v' e 't' corretos),
+    "UNKNOWN_TYPE" (tipo que o protocolo não conhece) ou
+    "INVALID_PARAM" (tipo conhecido, mas campo faltando ou com tipo errado).
+    """
+    try:
+        msg = json.loads(linha.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None, "BAD_FORMAT"
+    if not isinstance(msg, dict) or msg.get("v") != PROTOCOL_VERSION:
+        return None, "BAD_FORMAT"
+    tipo = msg.get("t")
+    if not isinstance(tipo, str):
+        return None, "BAD_FORMAT"
+    if tipo not in REQUIRED_TCP:
+        return None, "UNKNOWN_TYPE"
+    valida = _validar(msg, REQUIRED_TCP)
+    if valida is None:
+        return None, "INVALID_PARAM"
+    return valida, None
