@@ -125,4 +125,110 @@ class LineBuffer:
                 resultado.append(decode_line(linha))
         if len(self._buf) > MAX_LINE_SIZE:
             raise LineTooLong()
-        return resultado
+        return resultado 
+    # ---------- Construtoras UDP (peer <-> host) ----------
+
+def _base(tipo, **campos):
+    msg = {"v": PROTOCOL_VERSION, "t": tipo}
+    msg.update(campos)
+    return msg
+
+
+def hello(match_id, pid):
+    return _base("HELLO", m=match_id, pid=pid)
+
+
+def welcome(match_id, state, countdown_ms):
+    return _base("WELCOME", m=match_id, state=state, countdown_ms=countdown_ms)
+
+
+def input_msg(match_id, pid, iseq, direcao, ack):
+    return _base("INPUT", m=match_id, pid=pid, iseq=iseq, dir=direcao, ack=ack)
+
+
+def tick(match_id, recs):
+    return _base("TICK", m=match_id, recs=recs)
+
+
+def abort(match_id, reason):
+    return _base("ABORT", m=match_id, reason=reason)
+
+
+# ---------- Construtoras TCP: jogador -> lobby ----------
+
+def register(name, udp_port, udp_host=None):
+    msg = _base("REGISTER", name=name, udp_port=udp_port)
+    if udp_host is not None:
+        msg["udp_host"] = udp_host
+    return msg
+
+
+def create_match(name, max_players):
+    return _base("CREATE_MATCH", name=name, max_players=max_players)
+
+
+def list_matches():
+    return _base("LIST_MATCHES")
+
+
+def join_match(match_id):
+    return _base("JOIN_MATCH", match_id=match_id)
+
+
+def leave_match():
+    return _base("LEAVE_MATCH")
+
+
+def start_match():
+    return _base("START_MATCH")
+
+
+def match_end(winner):
+    return _base("MATCH_END", winner=winner)
+
+
+def ping():
+    return _base("PING")
+
+
+def pong():
+    return _base("PONG")
+
+
+# ---------- Construtoras TCP: lobby -> jogador ----------
+
+def register_ok(player_id):
+    return _base("REGISTER_OK", player_id=player_id)
+
+
+def match_created(match_id, slot):
+    return _base("MATCH_CREATED", match_id=match_id, slot=slot)
+
+
+def match_list(matches):
+    return _base("MATCH_LIST", matches=matches)
+
+
+def join_ok(match_id, slot, players):
+    return _base("JOIN_OK", match_id=match_id, slot=slot, players=players)
+
+
+def player_joined(slot, name):
+    return _base("PLAYER_JOINED", slot=slot, name=name)
+
+
+def player_left(slot, name):
+    return _base("PLAYER_LEFT", slot=slot, name=name)
+
+
+def match_cancelled(reason):
+    return _base("MATCH_CANCELLED", reason=reason)
+
+
+def match_start(match_id, host_slot, config, players):
+    return _base("MATCH_START", match_id=match_id, host_slot=host_slot,
+                 config=config, players=players)
+
+
+def error(code, msg):
+    return _base("ERROR", code=code, msg=msg)
