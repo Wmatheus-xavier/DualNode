@@ -302,6 +302,18 @@ class Host:
         j["visto"] = time.monotonic()
         j["ack"] = max(j["ack"], min(ack, len(self.historico)))
 
+    def _enviar_ticks(self):
+        for pid, j in self.jog.items():
+            if not j["conectado"]:
+                continue
+            recs = self.historico[j["ack"]: j["ack"] + JANELA]  # ciclos ack+1 ... ack+8
+            msg = {"v": 1, "t": "TICK", "m": self.match_start["match_id"],
+                   "pid": self.meu_pid, "recs": recs}
+            while len(recs) > 1 and len(encode(msg)) > MAX_DATAGRAMA:
+                recs = recs[:-1]  # corta o fim, mantém o começo
+                msg["recs"] = recs
+            self._enviar(pid, msg)
+
     def _montar_jogadores(self):
         self.meu_pid = self.match_start.get("host_slot", 0)
         for p in self.match_start["players"]:
