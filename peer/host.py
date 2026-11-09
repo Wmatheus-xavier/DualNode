@@ -279,7 +279,28 @@ class Host:
         return True
 
     def _tratar_input(self, pid, msg):
-        log.debug("INPUT aceito de pid %s: %s", pid, msg)  # passo 7
+        j = self.jog[pid]
+        if not j["conectado"]:
+            return                                    # quem foi dado como ausente não volta
+        if not j["presente"]:
+            log.debug("INPUT de pid %s antes do HELLO", pid)
+            return
+
+        iseq, d, ack = msg.get("iseq"), msg.get("dir"), msg.get("ack")
+        if any(isinstance(v, bool) or not isinstance(v, int) for v in (iseq, ack)) or ack < 0:
+            log.debug("INPUT de pid %s com iseq/ack inválido: %s", pid, msg)
+            return
+        if d not in ("U", "D", "L", "R"):
+            log.debug("INPUT de pid %s com direção inválida: %r", pid, d)
+            return
+        if iseq <= j["iseq"]:
+            log.debug("INPUT de pid %s repetido/atrasado (iseq %s <= %s)", pid, iseq, j["iseq"])
+            return
+
+        j["iseq"] = iseq
+        j["dir"] = d
+        j["visto"] = time.monotonic()
+        j["ack"] = max(j["ack"], min(ack, len(self.historico)))
 
     def _montar_jogadores(self):
         self.meu_pid = self.match_start.get("host_slot", 0)
