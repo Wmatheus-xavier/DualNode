@@ -60,7 +60,29 @@ class Host:
         """Devolve (pid, msg) se o datagrama for aceito; senão None."""
         if len(dados) > MAX_DATAGRAMA:
             return self._descartar(addr, "grande demais (%d bytes)" % len(dados))
-        
+
+        msg = decode(dados)
+        if msg is None:
+            return self._descartar(addr, "mensagem inválida")
+
+        if msg.get("m") != self.match_start.get("match_id"):
+            return self._descartar(addr, "partida diferente")
+
+        pid = msg.get("pid")
+        if not isinstance(pid, int):
+            return self._descartar(addr, "pid ausente ou inválido")
+
+        dono = self._pid_da_origem(addr)
+        if dono is None:
+            return self._descartar(addr, "origem desconhecida")
+        if dono != pid:
+            return self._descartar(addr, "pid %s veio do endereço do pid %s" % (pid, dono))
+
+        if msg["t"] not in ACEITOS.get(self.estado, set()):
+            return self._descartar(addr, "tipo %s fora de estado (%s)" % (msg["t"], self.estado))
+
+        return pid, msg
+
     def _montar_jogadores(self):
         self.meu_pid = self.match_start.get("host_slot", 0)
         for p in self.match_start["players"]:
