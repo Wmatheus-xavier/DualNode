@@ -23,6 +23,13 @@ except ImportError:
     def encode(msg):
         return json.dumps(msg, separators=(",", ":")).encode("utf-8")
 
+
+try:
+    from common.game_logic import novo_estado, welcome_state   # pessoa C
+except ImportError:
+    _START = {0: (5, 5, "R"), 1: (34, 14, "L"), 2: (20, 1, "D"), 3: (20, 18, "U")}
+
+
 MAX_DATAGRAMA = 1200
 
 # Tipos que um PEER pode mandar ao host, por estado do host
