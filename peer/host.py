@@ -127,7 +127,14 @@ class Host:
             self._tratar_input(pid, msg)
 
     def _tratar_hello(self, pid, msg, addr):
-        log.info("HELLO aceito de pid %s (%s)", pid, addr)  # passo 4
+        j = self.jog[pid]
+        if not j["conectado"]:
+            log.info("HELLO tardio de pid %s ignorado (já dado como ausente)", pid)
+            return
+        j["presente"] = True
+        j["visto"] = time.monotonic()
+        log.info("HELLO de pid %s: respondendo WELCOME", pid)
+        self._enviar_welcome(pid)
 
     def _tratar_input(self, pid, msg):
         log.debug("INPUT aceito de pid %s: %s", pid, msg)  # passo 7
