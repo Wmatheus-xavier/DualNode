@@ -126,6 +126,16 @@ class Host:
         elif msg["t"] == "INPUT":
             self._tratar_input(pid, msg)
 
+    def _enviar(self, pid, msg):
+        dados = encode(msg)
+        if len(dados) > MAX_DATAGRAMA:
+            log.error("mensagem %s para pid %s tem %d bytes (limite %d)",
+                      msg.get("t"), pid, len(dados), MAX_DATAGRAMA)
+        try:
+            self.sock.sendto(dados, self.jog[pid]["addr"])
+        except OSError as e:
+            log.warning("falha ao enviar %s para pid %s: %s", msg.get("t"), pid, e)
+
     def _tratar_hello(self, pid, msg, addr):
         j = self.jog[pid]
         if not j["conectado"]:
