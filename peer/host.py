@@ -7,9 +7,8 @@ import time
 log = logging.getLogger("host")
 
 try:
-    from common.protocol import decode
-except ImportError:          # provisório, até a pessoa E entregar o protocol.py
-    import json
+    from common.protocol import decode, encode            # pessoa E
+except ImportError:
 
     def decode(data):
         try:
