@@ -4,12 +4,13 @@ import logging
 import os
 import socket
 import time
+
 log = logging.getLogger("host")
 
+# --- provisórios: apague cada bloco quando o módulo real ficar pronto -------
 try:
     from common.protocol import decode, encode            # pessoa E
 except ImportError:
-
     def decode(data):
         try:
             msg = json.loads(data.decode("utf-8"))
@@ -19,16 +20,13 @@ except ImportError:
             return None
         return msg
 
-
     def encode(msg):
         return json.dumps(msg, separators=(",", ":")).encode("utf-8")
-
 
 try:
     from common.game_logic import novo_estado, welcome_state   # pessoa C
 except ImportError:
     _START = {0: (5, 5, "R"), 1: (34, 14, "L"), 2: (20, 1, "D"), 3: (20, 18, "U")}
-
 
     def novo_estado(width, height, pids):
         heads, dirs, alive, cells = {}, {}, {}, {}
@@ -38,12 +36,10 @@ except ImportError:
         return {"width": width, "height": height, "heads": heads,
                 "dirs": dirs, "alive": alive, "cells": cells}
 
-
     def welcome_state(estado, tick_ms):
         return {"width": estado["width"], "height": estado["height"], "tick_ms": tick_ms,
                 "players": [{"pid": p, "x": estado["heads"][p][0], "y": estado["heads"][p][1],
                              "dir": estado["dirs"][p]} for p in sorted(estado["heads"])]}
-
 # -----------------------------------------------------------------------------
 
 MAX_DATAGRAMA = 1200
