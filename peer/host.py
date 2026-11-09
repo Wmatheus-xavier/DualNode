@@ -21,6 +21,11 @@ class Host:
         self.match_start = match_start
         self.ui = ui
         self.sock = None
+        self.meu_pid = None
+        self.nomes = {}
+        self.jog = {}
+        self.addr_para_pid = {}
+        self._montar_jogadores()
         log.info("Host criado (partida %s)", match_start.get("match_id"))
 
     def _abrir_socket(self):
