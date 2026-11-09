@@ -83,6 +83,16 @@ class Host:
 
         return pid, msg
 
+    def _tratar_datagrama(self, dados, addr):
+        r = self._validar(dados, addr)
+        if r is None:
+            return
+        pid, msg = r
+        if msg["t"] == "HELLO":
+            self._tratar_hello(pid, msg, addr)
+        elif msg["t"] == "INPUT":
+            self._tratar_input(pid, msg)
+
     def _montar_jogadores(self):
         self.meu_pid = self.match_start.get("host_slot", 0)
         for p in self.match_start["players"]:
