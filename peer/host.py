@@ -314,6 +314,21 @@ class Host:
                 msg["recs"] = recs
             self._enviar(pid, msg)
 
+    def _executar_ciclo(self):
+        """Roda um ciclo, guarda o registro e manda os TICKs. Devolve o campo 'end'."""
+        n = len(self.historico) + 1
+        desejadas = {pid: j["dir"] for pid, j in self.jog.items() if j["dir"] is not None}
+        registro = step(self.jogo, desejadas, self.a_eliminar, n)
+        self.a_eliminar = set()
+        self.historico.append(registro)
+        self._enviar_ticks()
+        for pid, motivo in registro["el"]:
+            log.info("ciclo %d: %s eliminado (%s)", n, self.nomes.get(pid, pid), motivo)
+        if registro["end"] is not None:
+            self.estado = "ENDING"
+            log.info("ciclo %d: FIM %s", n, registro["end"])
+        return registro["end"]
+    
     def _montar_jogadores(self):
         self.meu_pid = self.match_start.get("host_slot", 0)
         for p in self.match_start["players"]:
