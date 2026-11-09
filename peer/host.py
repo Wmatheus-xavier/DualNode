@@ -30,6 +30,14 @@ except ImportError:
     _START = {0: (5, 5, "R"), 1: (34, 14, "L"), 2: (20, 1, "D"), 3: (20, 18, "U")}
 
 
+    def novo_estado(width, height, pids):
+        heads, dirs, alive, cells = {}, {}, {}, {}
+        for p in pids:
+            x, y, d = _START[p]
+            heads[p], dirs[p], alive[p], cells[(x, y)] = (x, y), d, True, p
+        return {"width": width, "height": height, "heads": heads,
+                "dirs": dirs, "alive": alive, "cells": cells}
+
 MAX_DATAGRAMA = 1200
 
 # Tipos que um PEER pode mandar ao host, por estado do host
