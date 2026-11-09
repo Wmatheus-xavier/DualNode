@@ -85,6 +85,7 @@ except ImportError:
 MAX_DATAGRAMA = 1200
 COUNTDOWN_MS = 3000
 TOLERANCIA_ATRASO = 5      # ciclos; acima disso, o relógio do ciclo é reajustado
+JANELA = 8                 # registros por TICK (README, seção 10)
 
 # Tipos que um PEER pode mandar ao host, por estado do host
 ACEITOS = {
