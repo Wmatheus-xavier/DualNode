@@ -5,6 +5,29 @@ import socket
 
 log = logging.getLogger("host")
 
+try:
+    from common.protocol import decode
+except ImportError:          # provisório, até a pessoa E entregar o protocol.py
+    import json
+
+    def decode(data):
+        try:
+            msg = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        if not isinstance(msg, dict) or msg.get("v") != 1 or "t" not in msg:
+            return None
+        return msg
+
+MAX_DATAGRAMA = 1200
+
+# Tipos que um PEER pode mandar ao host, por estado do host
+ACEITOS = {
+    "COLLECTING": {"HELLO", "INPUT"},
+    "COUNTDOWN": {"HELLO", "INPUT"},
+    "RUNNING": {"INPUT"},
+    "ENDING": {"INPUT"},
+}
 
 def configurar_log(caminho="logs/host.log"):
     os.makedirs(os.path.dirname(caminho), exist_ok=True)
@@ -26,7 +49,9 @@ class Host:
         self.jog = {}
         self.addr_para_pid = {}
         self._montar_jogadores()
+        self.estado = "COLLECTING"
         log.info("Host criado (partida %s)", match_start.get("match_id"))
+        
 
     def _montar_jogadores(self):
         self.meu_pid = self.match_start.get("host_slot", 0)
@@ -51,7 +76,7 @@ class Host:
     def _pid_da_origem(self, addr):
         """Devolve o pid dono desse endereço, ou None se for desconhecido."""
         return self.addr_para_pid.get(addr)
-    
+
     def _abrir_socket(self):
         eu = next(p for p in self.match_start["players"] if p["slot"] == 0)
         bind_host = self.config.get("peer", {}).get("bind_host", "0.0.0.0")
