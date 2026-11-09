@@ -16,6 +16,18 @@ def _abrir_socket(self):
     self.sock.setblocking(False)
     log.info("Host escutando em %s:%s", bind_host, eu["port"])
 
+    def _receber_tudo(self):
+        """Lê todos os datagramas pendentes. Devolve [(dados, addr), ...]."""
+        recebidos = []
+        while True:
+            try:
+                dados, addr = self.sock.recvfrom(2048)
+            except BlockingIOError:
+                break  # acabou o que tinha
+            except ConnectionResetError:
+                continue  # Windows avisa quando um peer fecha
+            recebidos.append((dados, addr))
+        return recebidos
 
 def configurar_log(caminho="logs/host.log"):
     os.makedirs(os.path.dirname(caminho), exist_ok=True)
