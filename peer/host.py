@@ -28,6 +28,26 @@ class Host:
         self._montar_jogadores()
         log.info("Host criado (partida %s)", match_start.get("match_id"))
 
+    def _montar_jogadores(self):
+        self.meu_pid = self.match_start.get("host_slot", 0)
+        for p in self.match_start["players"]:
+            pid = p["slot"]
+            self.nomes[pid] = p["name"]
+            if pid == self.meu_pid:
+                continue  # o host não é "peer" de si mesmo
+            addr = (p["host"], int(p["port"]))
+            self.jog[pid] = {
+                "addr": addr,
+                "presente": False,
+                "conectado": True,
+                "iseq": 0,
+                "dir": None,
+                "ack": 0,
+                "visto": None,
+            }
+            self.addr_para_pid[addr] = pid
+        log.info("Jogadores: %s", self.jog)
+
     def _abrir_socket(self):
         eu = next(p for p in self.match_start["players"] if p["slot"] == 0)
         bind_host = self.config.get("peer", {}).get("bind_host", "0.0.0.0")
