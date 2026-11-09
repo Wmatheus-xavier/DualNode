@@ -1,3 +1,10 @@
+"""Host (árbitro) da partida DualNode. Roteiro: docs/roteiro-host.md"""
+import logging
+import os
+
+log = logging.getLogger("host")
+
+
 
 class Host:
     def __init__(self, config, match_start, ui=None):
