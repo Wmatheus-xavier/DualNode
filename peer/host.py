@@ -161,6 +161,17 @@ class Host:
                 self._enviar(pid, {"v": 1, "t": "ABORT", "m": self.match_start["match_id"],
                                    "pid": self.meu_pid, "reason": motivo})
 
+    def _fase_collecting(self):
+        """Espera os HELLO. Devolve True se a partida pode seguir, False se abortou."""
+        limite = time.monotonic() + self.hello_deadline_s
+        while time.monotonic() < limite:
+            for dados, addr in self._receber_tudo():
+                self._tratar_datagrama(dados, addr)
+            if all(j["presente"] for j in self.jog.values()):
+                log.info("todos os peers se apresentaram")
+                break
+            time.sleep(0.01)
+
     def _tratar_input(self, pid, msg):
         log.debug("INPUT aceito de pid %s: %s", pid, msg)  # passo 7
 
