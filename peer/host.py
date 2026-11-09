@@ -96,6 +96,9 @@ class Host:
     def _tratar_hello(self, pid, msg, addr):
         log.info("HELLO aceito de pid %s (%s)", pid, addr)  # passo 4
 
+    def _tratar_input(self, pid, msg):
+        log.debug("INPUT aceito de pid %s: %s", pid, msg)  # passo 7
+
     def _montar_jogadores(self):
         self.meu_pid = self.match_start.get("host_slot", 0)
         for p in self.match_start["players"]:
