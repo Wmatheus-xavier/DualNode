@@ -8,6 +8,45 @@ import math
 
 log = logging.getLogger("host")
 
+try:
+    from common.game_logic import step                       # pessoa C
+except ImportError:
+    _OPOSTO = {"U": "D", "D": "U", "L": "R", "R": "L"}
+    _DELTA = {"U": (0, -1), "D": (0, 1), "L": (-1, 0), "R": (1, 0)}
+
+    def step(estado, desejadas, desconectados, n):
+        el = []
+        for p in sorted(estado["alive"]):
+            if estado["alive"][p] and p in desconectados:
+                estado["alive"][p] = False
+                el.append([p, "DISC"])
+        alvos = {}
+        for p in sorted(estado["alive"]):
+            if not estado["alive"][p]:
+                continue
+            d = desejadas.get(p)
+            if d and d != _OPOSTO[estado["dirs"][p]]:        # inversão é ignorada
+                estado["dirs"][p] = d
+            dx, dy = _DELTA[estado["dirs"][p]]
+            x, y = estado["heads"][p]
+            alvos[p] = (x + dx, y + dy)
+        mv = []
+        for p, (x, y) in alvos.items():
+            if not (0 <= x < estado["width"] and 0 <= y < estado["height"]):
+                estado["alive"][p] = False
+                el.append([p, "WALL"])
+            else:
+                estado["heads"][p] = (x, y)
+                estado["cells"][(x, y)] = p
+                mv.append([p, x, y])
+        vivos = [p for p in sorted(estado["alive"]) if estado["alive"][p]]
+        fim = None
+        if not vivos:
+            fim = {"result": "DRAW"}
+        elif len(vivos) == 1:
+            fim = {"result": "WIN", "winner": vivos[0]}
+        return {"n": n, "mv": mv, "el": sorted(el), "end": fim}
+
 # --- provisórios: apague cada bloco quando o módulo real ficar pronto -------
 try:
     from common.protocol import decode, encode            # pessoa E
