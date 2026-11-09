@@ -133,6 +133,8 @@ class Host:
         # todos os pids entram na arena, inclusive quem não aparecer
         self.jogo = novo_estado(self.width, self.height, sorted(self.nomes))
         self.desconectados_iniciais = set()
+        self.historico = []          # historico[n-1] é o registro do ciclo n
+        self.a_eliminar = set()      # pids a marcar como DISC no próximo ciclo
         log.info("Host criado (partida %s)", match_start.get("match_id"))
 
     def _enviar_tick_vazio(self):
