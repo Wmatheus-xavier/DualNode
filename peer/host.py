@@ -101,6 +101,41 @@ class Host:
                 self._enviar(pid, {"v": 1, "t": "TICK", "m": self.match_start["match_id"],
                                    "pid": self.meu_pid, "recs": []})
 
+    def _fase_countdown(self):
+        """Manda TICK vazio a cada tick_ms. Devolve o instante do primeiro ciclo."""
+        tick_s = self.tick_ms / 1000
+        total = math.ceil(COUNTDOWN_MS / self.tick_ms)
+        log.info("COUNTDOWN: %d TICKs vazios, um a cada %d ms", total, self.tick_ms)
+
+        proximo = time.monotonic()
+        enviados, ultimo, intervalos = 0, None, []
+        while enviados < total:
+            for dados, addr in self._receber_tudo():
+                self._tratar_datagrama(dados, addr)
+
+            agora = time.monotonic()
+            if agora < proximo:
+                time.sleep(min(proximo - agora, 0.005))
+                continue
+
+            self._enviar_tick_vazio()
+            enviados += 1
+            if ultimo is not None:
+                intervalos.append((agora - ultimo) * 1000)
+            ultimo = agora
+            proximo = _proximo_instante(proximo, agora, tick_s)
+
+        if intervalos:
+            log.info("COUNTDOWN concluído: intervalo médio %.1f ms (mín %.1f, máx %.1f)",
+                     sum(intervalos) / len(intervalos), min(intervalos), max(intervalos))
+
+        self.estado = "RUNNING"
+        agora = time.monotonic()
+        for j in self.jog.values():
+            if j["conectado"]:
+                j["visto"] = agora
+        return proximo
+
     def _descartar(self, addr, motivo):
         log.debug("descartado de %s: %s", addr, motivo)
         return None
