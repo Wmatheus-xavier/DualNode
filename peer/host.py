@@ -33,6 +33,7 @@ def configurar_log(caminho="logs/host.log"):
     os.makedirs(os.path.dirname(caminho), exist_ok=True)
     logging.basicConfig(
         filename=caminho,
+        filemode="w",
         level=logging.DEBUG,
         format="%(asctime)s %(levelname)s %(message)s",
     )
