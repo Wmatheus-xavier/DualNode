@@ -95,6 +95,12 @@ class Host:
         self.desconectados_iniciais = set()
         log.info("Host criado (partida %s)", match_start.get("match_id"))
 
+    def _enviar_tick_vazio(self):
+        for pid, j in self.jog.items():
+            if j["conectado"]:
+                self._enviar(pid, {"v": 1, "t": "TICK", "m": self.match_start["match_id"],
+                                   "pid": self.meu_pid, "recs": []})
+
     def _descartar(self, addr, motivo):
         log.debug("descartado de %s: %s", addr, motivo)
         return None
