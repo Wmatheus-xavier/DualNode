@@ -172,6 +172,19 @@ class Host:
                 break
             time.sleep(0.01)
 
+        ausentes = [pid for pid, j in self.jog.items() if not j["presente"]]
+        for pid in ausentes:
+            self.jog[pid]["conectado"] = False
+            self.desconectados_iniciais.add(pid)
+        if ausentes:
+            log.warning("não se apresentaram (serão eliminados com DISC): %s", ausentes)
+
+        if len(ausentes) == len(self.jog):           # só o host sobrou
+            self._abortar("jogadores insuficientes")
+            return False
+        self.estado = "COUNTDOWN"
+        return True
+
     def _tratar_input(self, pid, msg):
         log.debug("INPUT aceito de pid %s: %s", pid, msg)  # passo 7
 
