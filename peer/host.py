@@ -1,6 +1,7 @@
 """Host (árbitro) da partida DualNode. Roteiro: docs/roteiro-host.md"""
 import logging
 import os
+import socket
 
 log = logging.getLogger("host")
 
