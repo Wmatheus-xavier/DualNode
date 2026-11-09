@@ -291,8 +291,9 @@ class Host:
         try:
             if not self._fase_collecting():
                 return {"result": "ABORT", "winner": None}
-            log.info("COLLECTING concluído; ausentes=%s", sorted(self.desconectados_iniciais))
-            # passo 5 em diante: countdown, ciclo...
+            proximo = self._fase_countdown()
+            log.info("RUNNING; primeiro ciclo em %.0f ms", (proximo - time.monotonic()) * 1000)
+            # passo 6 em diante: laço dos ciclos a partir de `proximo`
             return {"result": "PENDENTE", "winner": None}
         finally:
             self.sock.close()
