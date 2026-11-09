@@ -502,11 +502,11 @@ Registrar logs/capturas de cada cenário no relatório técnico.
 
 | Nome | Matrícula | Responsabilidades |
 |------|-----------|-------------------|
-| Washington Xavier|252024622|
-| LUIZ EDUARDO|252009134|
-| PABLO RAFAEL|221003986|
-| SARA DA SILVA|202038281|
-|VITOR IVAN|231036309|
+| Washington Xavier|252024622|peer/host.py e interfaces|
+| LUIZ EDUARDO|252009134|common/protocol.py|
+| PABLO RAFAEL|221003986|peer/client.py|
+| SARA DA SILVA|202038281|common/game_logic.py|
+|VITOR IVAN|231036309|lobby/server.py (TCP)|
 
 ---
 
