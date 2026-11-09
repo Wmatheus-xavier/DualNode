@@ -56,6 +56,11 @@ class Host:
         log.debug("descartado de %s: %s", addr, motivo)
         return None
 
+    def _validar(self, dados, addr):
+        """Devolve (pid, msg) se o datagrama for aceito; senão None."""
+        if len(dados) > MAX_DATAGRAMA:
+            return self._descartar(addr, "grande demais (%d bytes)" % len(dados))
+        
     def _montar_jogadores(self):
         self.meu_pid = self.match_start.get("host_slot", 0)
         for p in self.match_start["players"]:
