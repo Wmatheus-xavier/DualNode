@@ -153,6 +153,14 @@ class Host:
             "countdown_ms": COUNTDOWN_MS,
         })
 
+    def _abortar(self, motivo):
+        self.estado = "ABORTED"
+        log.warning("partida abortada: %s", motivo)
+        for pid in self.jog:
+            for _ in range(3):  # melhor esforço
+                self._enviar(pid, {"v": 1, "t": "ABORT", "m": self.match_start["match_id"],
+                                   "pid": self.meu_pid, "reason": motivo})
+
     def _tratar_input(self, pid, msg):
         log.debug("INPUT aceito de pid %s: %s", pid, msg)  # passo 7
 
