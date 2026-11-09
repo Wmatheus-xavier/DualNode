@@ -44,7 +44,10 @@ except ImportError:
                 "players": [{"pid": p, "x": estado["heads"][p][0], "y": estado["heads"][p][1],
                              "dir": estado["dirs"][p]} for p in sorted(estado["heads"])]}
 
+# -----------------------------------------------------------------------------
+
 MAX_DATAGRAMA = 1200
+COUNTDOWN_MS = 3000
 
 # Tipos que um PEER pode mandar ao host, por estado do host
 ACEITOS = {
