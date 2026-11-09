@@ -328,7 +328,21 @@ class Host:
             self.estado = "ENDING"
             log.info("ciclo %d: FIM %s", n, registro["end"])
         return registro["end"]
-    
+
+    def _fase_rodando(self, proximo):
+        tick_s = self.tick_ms / 1000
+        while True:
+            for dados, addr in self._receber_tudo():
+                self._tratar_datagrama(dados, addr)
+            agora = time.monotonic()
+            if agora < proximo:
+                time.sleep(min(proximo - agora, 0.005))
+                continue
+            fim = self._executar_ciclo()
+            if fim is not None:
+                return fim
+            proximo = _proximo_instante(proximo, agora, tick_s)
+
     def _montar_jogadores(self):
         self.meu_pid = self.match_start.get("host_slot", 0)
         for p in self.match_start["players"]:
