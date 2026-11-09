@@ -19,6 +19,10 @@ except ImportError:
             return None
         return msg
 
+
+    def encode(msg):
+        return json.dumps(msg, separators=(",", ":")).encode("utf-8")
+
 MAX_DATAGRAMA = 1200
 
 # Tipos que um PEER pode mandar ao host, por estado do host
