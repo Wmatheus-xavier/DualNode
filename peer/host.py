@@ -51,7 +51,10 @@ class Host:
         self._montar_jogadores()
         self.estado = "COLLECTING"
         log.info("Host criado (partida %s)", match_start.get("match_id"))
-        
+
+    def _descartar(self, addr, motivo):
+        log.debug("descartado de %s: %s", addr, motivo)
+        return None
 
     def _montar_jogadores(self):
         self.meu_pid = self.match_start.get("host_slot", 0)
