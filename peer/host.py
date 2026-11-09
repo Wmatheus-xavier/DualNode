@@ -48,6 +48,10 @@ class Host:
             self.addr_para_pid[addr] = pid
         log.info("Jogadores: %s", self.jog)
 
+    def _pid_da_origem(self, addr):
+        """Devolve o pid dono desse endereço, ou None se for desconhecido."""
+        return self.addr_para_pid.get(addr)
+    
     def _abrir_socket(self):
         eu = next(p for p in self.match_start["players"] if p["slot"] == 0)
         bind_host = self.config.get("peer", {}).get("bind_host", "0.0.0.0")
