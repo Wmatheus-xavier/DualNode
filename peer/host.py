@@ -146,6 +146,13 @@ class Host:
         log.info("HELLO de pid %s: respondendo WELCOME", pid)
         self._enviar_welcome(pid)
 
+    def _enviar_welcome(self, pid):
+        self._enviar(pid, {
+            "v": 1, "t": "WELCOME", "m": self.match_start["match_id"], "pid": self.meu_pid,
+            "state": welcome_state(self.jogo, self.tick_ms),
+            "countdown_ms": COUNTDOWN_MS,
+        })
+
     def _tratar_input(self, pid, msg):
         log.debug("INPUT aceito de pid %s: %s", pid, msg)  # passo 7
 
