@@ -38,6 +38,12 @@ except ImportError:
         return {"width": width, "height": height, "heads": heads,
                 "dirs": dirs, "alive": alive, "cells": cells}
 
+
+    def welcome_state(estado, tick_ms):
+        return {"width": estado["width"], "height": estado["height"], "tick_ms": tick_ms,
+                "players": [{"pid": p, "x": estado["heads"][p][0], "y": estado["heads"][p][1],
+                             "dir": estado["dirs"][p]} for p in sorted(estado["heads"])]}
+
 MAX_DATAGRAMA = 1200
 
 # Tipos que um PEER pode mandar ao host, por estado do host
