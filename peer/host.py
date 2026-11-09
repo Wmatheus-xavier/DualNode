@@ -236,4 +236,12 @@ class Host:
         return recebidos
 
     def run(self):
-        raise NotImplementedError
+        self._abrir_socket()
+        try:
+            if not self._fase_collecting():
+                return {"result": "ABORT", "winner": None}
+            log.info("COLLECTING concluído; ausentes=%s", sorted(self.desconectados_iniciais))
+            # passo 5 em diante: countdown, ciclo...
+            return {"result": "PENDENTE", "winner": None}
+        finally:
+            self.sock.close()
