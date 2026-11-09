@@ -75,6 +75,14 @@ class Host:
         self.addr_para_pid = {}
         self._montar_jogadores()
         self.estado = "COLLECTING"
+        cfg = match_start["config"]
+        self.width, self.height, self.tick_ms = cfg["width"], cfg["height"], cfg["tick_ms"]
+        t = config.get("timeouts", {})
+        self.hello_deadline_s = t.get("hello_deadline_ms", 10000) / 1000
+
+        # todos os pids entram na arena, inclusive quem não aparecer
+        self.jogo = novo_estado(self.width, self.height, sorted(self.nomes))
+        self.desconectados_iniciais = set()
         log.info("Host criado (partida %s)", match_start.get("match_id"))
 
     def _descartar(self, addr, motivo):
