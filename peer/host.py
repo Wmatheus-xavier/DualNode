@@ -5,6 +5,18 @@ import socket
 
 log = logging.getLogger("host")
 
+
+def _abrir_socket(self):
+    eu = next(p for p in self.match_start["players"] if p["slot"] == 0)
+    bind_host = self.config.get("peer", {}).get("bind_host", "0.0.0.0")
+
+    self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    self.sock.bind((bind_host, eu["port"]))
+    self.sock.setblocking(False)
+    log.info("Host escutando em %s:%s", bind_host, eu["port"])
+
+
 def configurar_log(caminho="logs/host.log"):
     os.makedirs(os.path.dirname(caminho), exist_ok=True)
     logging.basicConfig(
