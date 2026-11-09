@@ -63,6 +63,14 @@ def configurar_log(caminho="logs/host.log"):
         level=logging.DEBUG,
         format="%(asctime)s %(levelname)s %(message)s",
     )
+def _proximo_instante(proximo, agora, tick_s):
+    """Instante do próximo ciclo, sem acumular atraso."""
+    proximo += tick_s
+    if agora - proximo > TOLERANCIA_ATRASO * tick_s:
+        log.warning("atrasado %.0f ms; reajustando o relógio do ciclo",
+                    (agora - proximo) * 1000)
+        proximo = agora + tick_s
+    return proximo
 
 
 class Host:
