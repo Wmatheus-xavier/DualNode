@@ -160,6 +160,11 @@ class Host:
         proximo = time.monotonic()
         enviados, ultimo, intervalos = 0, None, []
         while enviados < total:
+
+            self._ler_teclado()
+            if self.quer_sair:
+                return None
+
             for dados, addr in self._receber_tudo():
                 self._tratar_datagrama(dados, addr)
 
@@ -361,6 +366,12 @@ class Host:
                 log.warning("ENDING: sem confirmação de %s após %.1f s (desistindo)",
                             pendentes, agora - inicio)
                 break
+
+            self._ler_teclado()
+            if self.quer_sair:
+                log.warning("ENDING: host saiu antes de todos confirmarem (pendentes: %s)", pendentes)
+                break
+
             if agora >= proximo:
                 self._enviar_ticks(so_pendentes=True)
                 proximo += tick_s
