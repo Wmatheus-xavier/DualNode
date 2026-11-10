@@ -444,6 +444,7 @@ class Host:
             proximo = self._fase_countdown()
             self.a_eliminar = set(self.desconectados_iniciais)  # ausentes viram DISC no ciclo 1
             fim = self._fase_rodando(proximo)
+            self._fase_ending()
             return {"result": fim["result"], "winner": fim.get("winner")}
         finally:
             self.sock.close()
