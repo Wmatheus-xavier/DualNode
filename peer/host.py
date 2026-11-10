@@ -364,6 +364,23 @@ class Host:
                 log.warning("pid %s (%s) sem INPUT há %.1f s: DISC no ciclo %d",
                             pid, self.nomes.get(pid, pid), silencio, len(self.historico) + 1)
 
+    def _desenhar(self, status=None):
+        if self.ui is None:
+            return
+        if status is not None:
+            self.view.status = status
+        self.ui.draw(self.view)
+
+    def _ler_teclado(self):
+        """Lê o teclado do host (sem bloquear): atualiza a direção desejada ou o pedido de saída."""
+        if self.ui is None:
+            return
+        tecla = self.ui.poll_input()
+        if tecla == "QUIT":
+            self.quer_sair = True
+        elif tecla is not None:
+            self.dir_host = tecla
+
     def _executar_ciclo(self):
         """Roda um ciclo, guarda o registro e manda os TICKs. Devolve o campo 'end'."""
         n = len(self.historico) + 1
