@@ -450,8 +450,13 @@ class Host:
 
     def _abrir_socket(self):
         eu = next(p for p in self.match_start["players"] if p["slot"] == 0)
-        bind_host = self.config.get("peer", {}).get("bind_host", "0.0.0.0")
-
+        try:
+            self.sock.bind((bind_host, eu["port"]))
+        except OSError as e:
+            log.error("não foi possível abrir %s:%s (%s). Já existe outro host nessa porta?",
+                      bind_host, eu["port"], e)
+            self.sock.close()
+            raise
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind((bind_host, eu["port"]))
