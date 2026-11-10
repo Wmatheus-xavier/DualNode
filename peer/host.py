@@ -317,6 +317,35 @@ class Host:
                 msg["recs"] = recs
             self._enviar(pid, msg)
 
+    def _fase_ending(self):
+        """Reenvia o registro final até todos confirmarem (ack >= n_final) ou dar timeout."""
+        n_final = len(self.historico)
+        tick_s = self.tick_ms / 1000
+        inicio = time.monotonic()
+        limite = inicio + self.peer_timeout_s
+        proximo = inicio + tick_s
+        log.info("ENDING: aguardando confirmação do ciclo %d (até %.1f s)", n_final, self.peer_timeout_s)
+        while True:
+            for dados, addr in self._receber_tudo():
+                self._tratar_datagrama(dados, addr)
+            pendentes = [pid for pid, j in self.jog.items()
+                         if j["conectado"] and j["ack"] < n_final]
+            agora = time.monotonic()
+            if not pendentes:
+                log.info("ENDING: todos confirmaram o ciclo %d em %.0f ms",
+                         n_final, (agora - inicio) * 1000)
+                break
+            if agora >= limite:
+                log.warning("ENDING: sem confirmação de %s após %.1f s (desistindo)",
+                            pendentes, agora - inicio)
+                break
+            if agora >= proximo:
+                self._enviar_ticks(so_pendentes=True)
+                proximo += tick_s
+            else:
+                time.sleep(min(proximo - agora, 0.005))
+        self.estado = "FINISHED"
+
     def _verificar_timeouts(self, agora=None):
         """Marca como desconectado quem ficou sem INPUT válido por peer_timeout_ms."""
         agora = time.monotonic() if agora is None else agora
