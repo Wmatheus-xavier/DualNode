@@ -315,6 +315,19 @@ class Host:
                 msg["recs"] = recs
             self._enviar(pid, msg)
 
+    def _verificar_timeouts(self, agora=None):
+        """Marca como desconectado quem ficou sem INPUT válido por peer_timeout_ms."""
+        agora = time.monotonic() if agora is None else agora
+        for pid, j in self.jog.items():
+            if not j["conectado"] or j["visto"] is None:
+                continue
+            silencio = agora - j["visto"]
+            if silencio > self.peer_timeout_s:
+                j["conectado"] = False
+                self.a_eliminar.add(pid)
+                log.warning("pid %s (%s) sem INPUT há %.1f s: DISC no ciclo %d",
+                            pid, self.nomes.get(pid, pid), silencio, len(self.historico) + 1)
+
     def _executar_ciclo(self):
         """Roda um ciclo, guarda o registro e manda os TICKs. Devolve o campo 'end'."""
         n = len(self.historico) + 1
