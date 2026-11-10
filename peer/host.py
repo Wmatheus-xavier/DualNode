@@ -370,7 +370,7 @@ class Host:
         if status is not None:
             self.view.status = status
         self.ui.draw(self.view)
-
+        
     def _ler_teclado(self):
         """Lê o teclado do host (sem bloquear): atualiza a direção desejada ou o pedido de saída."""
         if self.ui is None:
