@@ -278,10 +278,14 @@ class Host:
         while time.monotonic() < limite:
             for dados, addr in self._receber_tudo():
                 self._tratar_datagrama(dados, addr)
-            if all(j["presente"] for j in self.jog.values()):
-                log.info("todos os peers se apresentaram")
-                break
+                if all(j["presente"] for j in self.jog.values()):
+                    log.info("todos os peers se apresentaram")
+                    break
             time.sleep(0.01)
+
+            self._ler_teclado()
+            if self.quer_sair:
+                return False
 
         ausentes = [pid for pid, j in self.jog.items() if not j["presente"]]
         for pid in ausentes:
@@ -295,6 +299,7 @@ class Host:
             return False
         self.estado = "COUNTDOWN"
         return True
+
 
     def _tratar_input(self, pid, msg):
         j = self.jog[pid]
