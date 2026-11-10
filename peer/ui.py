@@ -159,6 +159,7 @@ class TerminalUI:
 
     def wait_key(self):
         """Espera o jogador apertar qualquer tecla (usado na tela final)."""
+        curses.flushinp()  # descarta teclas acumuladas (ex.: setas apertadas durante o jogo)
         self.scr.nodelay(False)
         self.scr.getch()
         self.scr.nodelay(True)
