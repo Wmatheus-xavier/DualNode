@@ -168,6 +168,9 @@ class Host:
 
             self._enviar_tick_vazio()
             enviados += 1
+            restante = math.ceil((total - enviados) * tick_s)
+            self._desenhar("Começa em %d s" % restante if restante else "VAI!")
+
             if ultimo is not None:
                 intervalos.append((agora - ultimo) * 1000)
             ultimo = agora
@@ -262,6 +265,7 @@ class Host:
 
     def _fase_collecting(self):
         """Espera os HELLO. Devolve True se a partida pode seguir, False se abortou."""
+        self._desenhar("Aguardando jogadores...")
         limite = time.monotonic() + self.hello_deadline_s
         while time.monotonic() < limite:
             for dados, addr in self._receber_tudo():
