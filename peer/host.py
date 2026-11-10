@@ -137,6 +137,8 @@ class Host:
         self.desconectados_iniciais = set()
         self.historico = []          # historico[n-1] é o registro do ciclo n
         self.a_eliminar = set()      # pids a marcar como DISC no próximo ciclo
+        self.resultado = None                # preenchido quando a partida acaba normalmente
+        self.motivo_abort = None
         self.dir_host = None                 # direção desejada pelo teclado do host
         self.quer_sair = False
         self.view = GameView(self.meu_pid, self.nomes)
