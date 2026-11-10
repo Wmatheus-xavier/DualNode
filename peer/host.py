@@ -303,10 +303,12 @@ class Host:
         j["visto"] = time.monotonic()
         j["ack"] = max(j["ack"], min(ack, len(self.historico)))
 
-    def _enviar_ticks(self):
+    def _enviar_ticks(self, so_pendentes=False):
         for pid, j in self.jog.items():
             if not j["conectado"]:
                 continue
+            if so_pendentes and j["ack"] >= len(self.historico):
+                    continue
             recs = self.historico[j["ack"]: j["ack"] + JANELA]  # ciclos ack+1 ... ack+8
             msg = {"v": 1, "t": "TICK", "m": self.match_start["match_id"],
                    "pid": self.meu_pid, "recs": recs}
