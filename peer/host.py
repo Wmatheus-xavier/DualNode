@@ -370,7 +370,7 @@ class Host:
         if status is not None:
             self.view.status = status
         self.ui.draw(self.view)
-        
+
     def _ler_teclado(self):
         """Lê o teclado do host (sem bloquear): atualiza a direção desejada ou o pedido de saída."""
         if self.ui is None:
@@ -386,10 +386,14 @@ class Host:
         n = len(self.historico) + 1
         self._verificar_timeouts()  # <-- nova
         desejadas = {pid: j["dir"] for pid, j in self.jog.items() if j["dir"] is not None}
+        if self.dir_host is not None:  # <-- nova
+            desejadas[self.meu_pid] = self.dir_host
         registro = step(self.jogo, desejadas, self.a_eliminar, n)
         self.a_eliminar = set()
         self.historico.append(registro)
         self._enviar_ticks()
+        self.view.apply_record(registro)  # <-- nova
+        self._desenhar()  # <-- nova
         for pid, motivo in registro["el"]:
             log.info("ciclo %d: %s eliminado (%s)", n, self.nomes.get(pid, pid), motivo)
         if registro["end"] is not None:
