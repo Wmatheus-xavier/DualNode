@@ -406,6 +406,9 @@ class Host:
         while True:
             for dados, addr in self._receber_tudo():
                 self._tratar_datagrama(dados, addr)
+            self._ler_teclado()  # <-- nova
+            if self.quer_sair:  # <-- nova
+                    return None
             agora = time.monotonic()
             if agora < proximo:
                 time.sleep(min(proximo - agora, 0.005))
