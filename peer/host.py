@@ -257,13 +257,19 @@ class Host:
             "countdown_ms": COUNTDOWN_MS,
         })
 
-    def _abortar(self, motivo):
+    def _abortar(self, motivo, tentativas=3, intervalo_s=0.05):
+        """Encerra a partida de forma controlada: avisa os peers conectados (melhor esforço)."""
         self.estado = "ABORTED"
+        self.motivo_abort = motivo
         log.warning("partida abortada: %s", motivo)
-        for pid in self.jog:
-            for _ in range(3):  # melhor esforço
-                self._enviar(pid, {"v": 1, "t": "ABORT", "m": self.match_start["match_id"],
-                                   "pid": self.meu_pid, "reason": motivo})
+        self._desenhar("Partida encerrada (%s). Pressione qualquer tecla." % motivo)
+        for i in range(tentativas):
+            for pid, j in self.jog.items():
+                if j["conectado"]:
+                    self._enviar(pid, {"v": 1, "t": "ABORT", "m": self.match_start["match_id"],
+                                       "pid": self.meu_pid, "reason": motivo})
+            if i < tentativas - 1:
+                time.sleep(intervalo_s)  # espaça: perdas em rajada atingem os 3 juntos
 
     def _fase_collecting(self):
         """Espera os HELLO. Devolve True se a partida pode seguir, False se abortou."""
