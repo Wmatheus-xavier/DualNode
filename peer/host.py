@@ -331,6 +331,7 @@ class Host:
     def _executar_ciclo(self):
         """Roda um ciclo, guarda o registro e manda os TICKs. Devolve o campo 'end'."""
         n = len(self.historico) + 1
+        self._verificar_timeouts()  # <-- nova
         desejadas = {pid: j["dir"] for pid, j in self.jog.items() if j["dir"] is not None}
         registro = step(self.jogo, desejadas, self.a_eliminar, n)
         self.a_eliminar = set()
