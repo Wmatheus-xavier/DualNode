@@ -498,18 +498,42 @@ class Host:
             recebidos.append((dados, addr))
         return recebidos
 
+    d    def _abortado(self):
+        """Fecha a partida como ABORT (uma vez só) e devolve o resultado."""
+        if self.estado != "ABORTED":
+            self._abortar("host saiu")
+        return {"result": "ABORT", "winner": None}
+
+    def _rodar_partida(self):
+        if not self._fase_collecting():
+            return self._abortado()
+        proximo = self._fase_countdown()
+        if proximo is None:
+            return self._abortado()
+        self.a_eliminar = set(self.desconectados_iniciais)
+        fim = self._fase_rodando(proximo)
+        if fim is None:
+            return self._abortado()
+        self.resultado = {"result": fim["result"], "winner": fim.get("winner")}
+        self._fase_ending()
+        return self.resultado
+
+    def _resumo(self):
+        caidos = sorted(pid for pid, j in self.jog.items() if not j["conectado"])
+        log.info("Resumo: estado=%s ciclos=%d desconectados=%s resultado=%s motivo_abort=%s",
+                 self.estado, len(self.historico), caidos, self.resultado, self.motivo_abort)
+
     def run(self):
         self._abrir_socket()
         try:
-            if not self._fase_collecting():
-                return {"result": "ABORT", "winner": None}
-            proximo = self._fase_countdown()
-            self.a_eliminar = set(self.desconectados_iniciais)  # ausentes viram DISC no ciclo 1
-            fim = self._fase_rodando(proximo)
-            if fim is None:
-                self._abortar("host saiu")
-                return {"result": "ABORT", "winner": None}
-            self._fase_ending()
-            return {"result": fim["result"], "winner": fim.get("winner")}
+            return self._rodar_partida()
+        except KeyboardInterrupt:
+            if self.resultado is not None:           # a partida já tinha acabado (fase ENDING)
+                log.warning("host interrompido (Ctrl+C) depois do fim da partida")
+                return self.resultado
+            if self.estado != "ABORTED":
+                self._abortar("host interrompido (Ctrl+C)")
+            return {"result": "ABORT", "winner": None}
         finally:
+            self._resumo()
             self.sock.close()
