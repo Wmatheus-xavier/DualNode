@@ -137,7 +137,10 @@ class Host:
         self.desconectados_iniciais = set()
         self.historico = []          # historico[n-1] é o registro do ciclo n
         self.a_eliminar = set()      # pids a marcar como DISC no próximo ciclo
-        
+        self.dir_host = None                 # direção desejada pelo teclado do host
+        self.quer_sair = False
+        self.view = GameView(self.meu_pid, self.nomes)
+        self.view.load_welcome(welcome_state(self.jogo, self.tick_ms))
         log.info("Host criado (partida %s)", match_start.get("match_id"))
 
     def _enviar_tick_vazio(self):
