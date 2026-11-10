@@ -41,7 +41,7 @@ REASON_TEXT = {
     "DISC": "desconectou",
 }
 
-PANEL_WIDTH = 28  # largura da coluna lateral com placar
+PANEL_WIDTH = 34  # largura da coluna lateral com placar
 
 
 # ------------------------------------------------------------ estado visual
