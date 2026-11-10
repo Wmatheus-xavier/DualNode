@@ -129,6 +129,7 @@ class Host:
         self.width, self.height, self.tick_ms = cfg["width"], cfg["height"], cfg["tick_ms"]
         t = config.get("timeouts", {})
         self.hello_deadline_s = t.get("hello_deadline_ms", 10000) / 1000
+        self.peer_timeout_s = t.get("peer_timeout_ms", 3000) / 1000
 
         # todos os pids entram na arena, inclusive quem não aparecer
         self.jogo = novo_estado(self.width, self.height, sorted(self.nomes))
