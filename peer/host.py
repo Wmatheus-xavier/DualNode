@@ -7,6 +7,7 @@ import time
 import math
 
 log = logging.getLogger("host")
+from peer.ui import GameView
 
 try:
     from common.game_logic import step                       # pessoa C
@@ -136,6 +137,7 @@ class Host:
         self.desconectados_iniciais = set()
         self.historico = []          # historico[n-1] é o registro do ciclo n
         self.a_eliminar = set()      # pids a marcar como DISC no próximo ciclo
+        
         log.info("Host criado (partida %s)", match_start.get("match_id"))
 
     def _enviar_tick_vazio(self):
