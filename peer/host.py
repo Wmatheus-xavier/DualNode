@@ -498,7 +498,7 @@ class Host:
             recebidos.append((dados, addr))
         return recebidos
 
-    d    def _abortado(self):
+    def _abortado(self):
         """Fecha a partida como ABORT (uma vez só) e devolve o resultado."""
         if self.estado != "ABORTED":
             self._abortar("host saiu")
