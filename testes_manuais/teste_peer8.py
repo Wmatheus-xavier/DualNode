@@ -86,5 +86,4 @@ if fim is not None:                             # confirma o fim para o host (li
     while time.monotonic() < fim_linger:
         mandar_input()
         time.sleep(0.1)
-
 print("RESUMO eliminacoes=%s fim=%s" % (eliminacoes, fim))
