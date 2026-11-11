@@ -482,6 +482,11 @@ class Host:
             self.sock.close()
             raise
         self.sock.setblocking(False)
+        sim = self.config.get("sim")
+        if sim:                                      # rede ruim simulada (só em teste)
+            from common.simnet import SimSocket
+            self.sock = SimSocket(self.sock, **sim)
+            log.warning("REDE SIMULADA ativa: %s", sim)
         log.info("Host escutando em %s:%s", bind_host, eu["port"])
 
     def _receber_tudo(self):
@@ -521,6 +526,9 @@ class Host:
         caidos = sorted(pid for pid, j in self.jog.items() if not j["conectado"])
         log.info("Resumo: estado=%s ciclos=%d desconectados=%s resultado=%s motivo_abort=%s",
                  self.estado, len(self.historico), caidos, self.resultado, self.motivo_abort)
+        stats = getattr(self.sock, "stats", None)
+        if stats:
+            log.info("Rede simulada: %s", stats)
 
     def run(self):
         self._abrir_socket()
