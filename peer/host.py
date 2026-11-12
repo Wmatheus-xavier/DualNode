@@ -279,22 +279,20 @@ class Host:
     def _fase_collecting(self):
         """Espera os HELLO. Devolve True se a partida pode seguir, False se abortou."""
         self._desenhar("Aguardando jogadores...")
-        tick_s = self.tick_ms / 1000  # <-- novo
+        tick_s = self.tick_ms / 1000
         proximo_vida = time.monotonic() + tick_s
-    limite = time.monotonic() + self.hello_deadline_s
+        limite = time.monotonic() + self.hello_deadline_s
         while time.monotonic() < limite:
             for dados, addr in self._receber_tudo():
                 self._tratar_datagrama(dados, addr)
-                if all(j["presente"] for j in self.jog.values()):
-                    log.info("todos os peers se apresentaram")
-                    break
-                agora = time.monotonic()
-                if agora >= proximo_vida:  # sinal de vida para quem já se apresentou
-                    self._enviar_tick_vazio(so_presentes=True)
-                    proximo_vida = agora + tick_s
-                time.sleep(0.01)
+            if all(j["presente"] for j in self.jog.values()):
+                log.info("todos os peers se apresentaram")
+                break
+            agora = time.monotonic()
+            if agora >= proximo_vida:  # sinal de vida para quem já se apresentou
+                self._enviar_tick_vazio(so_presentes=True)
+                proximo_vida = agora + tick_s
             time.sleep(0.01)
-
             self._ler_teclado()
             if self.quer_sair:
                 return False
