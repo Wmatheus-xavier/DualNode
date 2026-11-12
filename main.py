@@ -4,7 +4,9 @@ Uso: python main.py --name Alice
      python main.py --demo      (abre a interface local, sem rede)
 """
 import argparse
-
+import json
+from peer.host import Host, configurar_log
+from peer.ui import TerminalUI, ask_choice
 from peer.ui import ask_choice, demo
 
 
@@ -19,6 +21,17 @@ def parse_args():
                    help="abre a demo da interface, sem rede")
     return p.parse_args()
 
+def jogar_como_host(match_start, nome):
+    config = {
+        "peer": {"bind_host": "0.0.0.0"},
+        "timeouts": {"hello_deadline_ms": 10000, "peer_timeout_ms": 3000},
+    }
+    configurar_log("logs/host_%s.log" % nome)
+    with TerminalUI() as ui:
+        resultado = Host(config, match_start, ui=ui).run()   # bloqueia até a partida acabar
+        ui.wait_key()
+    print("resultado:", resultado)
+    return resultado
 
 def main():
     args = parse_args()
