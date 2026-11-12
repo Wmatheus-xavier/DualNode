@@ -10,7 +10,7 @@ log = logging.getLogger("host")
 from peer.ui import GameView
 
 try:
-    from common.game_logic import step                       # pessoa C
+    from common.game_logic import step
 except ImportError:
     _OPOSTO = {"U": "D", "D": "U", "L": "R", "R": "L"}
     _DELTA = {"U": (0, -1), "D": (0, 1), "L": (-1, 0), "R": (1, 0)}
@@ -26,7 +26,7 @@ except ImportError:
             if not estado["alive"][p]:
                 continue
             d = desejadas.get(p)
-            if d and d != _OPOSTO[estado["dirs"][p]]:        # inversão é ignorada
+            if d and d != _OPOSTO[estado["dirs"][p]]:
                 estado["dirs"][p] = d
             dx, dy = _DELTA[estado["dirs"][p]]
             x, y = estado["heads"][p]
@@ -48,7 +48,7 @@ except ImportError:
             fim = {"result": "WIN", "winner": vivos[0]}
         return {"n": n, "mv": mv, "el": sorted(el), "end": fim}
 
-# --- provisórios: apague cada bloco quando o módulo real ficar pronto -------
+
 try:
     from common.protocol import decode, encode            # pessoa E
 except ImportError:
@@ -85,8 +85,8 @@ except ImportError:
 
 MAX_DATAGRAMA = 1200
 COUNTDOWN_MS = 3000
-TOLERANCIA_ATRASO = 5      # ciclos; acima disso, o relógio do ciclo é reajustado
-JANELA = 8                 # registros por TICK (README, seção 10)
+TOLERANCIA_ATRASO = 5
+JANELA = 8
 
 # Tipos que um PEER pode mandar ao host, por estado do host
 ACEITOS = {
@@ -105,7 +105,7 @@ def configurar_log(caminho="logs/host.log"):
         format="%(asctime)s %(levelname)s %(message)s",
     )
 def _proximo_instante(proximo, agora, tick_s):
-    """Instante do próximo ciclo, sem acumular atraso."""
+
     proximo += tick_s
     if agora - proximo > TOLERANCIA_ATRASO * tick_s:
         log.warning("atrasado %.0f ms; reajustando o relógio do ciclo",
@@ -132,14 +132,14 @@ class Host:
         self.hello_deadline_s = t.get("hello_deadline_ms", 10000) / 1000
         self.peer_timeout_s = t.get("peer_timeout_ms", 3000) / 1000
 
-        # todos os pids entram na arena, inclusive quem não aparecer
+
         self.jogo = novo_estado(self.width, self.height, sorted(self.nomes))
         self.desconectados_iniciais = set()
-        self.historico = []          # historico[n-1] é o registro do ciclo n
-        self.a_eliminar = set()      # pids a marcar como DISC no próximo ciclo
-        self.resultado = None                # preenchido quando a partida acaba normalmente
+        self.historico = []
+        self.a_eliminar = set()
+        self.resultado = None
         self.motivo_abort = None
-        self.dir_host = None                 # direção desejada pelo teclado do host
+        self.dir_host = None
         self.quer_sair = False
         self.view = GameView(self.meu_pid, self.nomes)
         self.view.load_welcome(welcome_state(self.jogo, self.tick_ms))
@@ -152,7 +152,7 @@ class Host:
                                    "pid": self.meu_pid, "recs": []})
 
     def _fase_countdown(self):
-        """Manda TICK vazio a cada tick_ms. Devolve o instante do primeiro ciclo."""
+
         tick_s = self.tick_ms / 1000
         total = math.ceil(COUNTDOWN_MS / self.tick_ms)
         log.info("COUNTDOWN: %d TICKs vazios, um a cada %d ms", total, self.tick_ms)
@@ -199,7 +199,7 @@ class Host:
         return None
 
     def _validar(self, dados, addr):
-        """Devolve (pid, msg) se o datagrama for aceito; senão None."""
+
         if len(dados) > MAX_DATAGRAMA:
             return self._descartar(addr, "grande demais (%d bytes)" % len(dados))
 
@@ -263,7 +263,7 @@ class Host:
         })
 
     def _abortar(self, motivo, tentativas=3, intervalo_s=0.05):
-        """Encerra a partida de forma controlada: avisa os peers conectados (melhor esforço)."""
+
         self.estado = "ABORTED"
         self.motivo_abort = motivo
         log.warning("partida abortada: %s", motivo)
@@ -274,10 +274,10 @@ class Host:
                     self._enviar(pid, {"v": 1, "t": "ABORT", "m": self.match_start["match_id"],
                                        "pid": self.meu_pid, "reason": motivo})
             if i < tentativas - 1:
-                time.sleep(intervalo_s)  # espaça: perdas em rajada atingem os 3 juntos
+                time.sleep(intervalo_s)
 
     def _fase_collecting(self):
-        """Espera os HELLO. Devolve True se a partida pode seguir, False se abortou."""
+
         self._desenhar("Aguardando jogadores...")
         tick_s = self.tick_ms / 1000
         proximo_vida = time.monotonic() + tick_s
@@ -289,7 +289,7 @@ class Host:
                 log.info("todos os peers se apresentaram")
                 break
             agora = time.monotonic()
-            if agora >= proximo_vida:  # sinal de vida para quem já se apresentou
+            if agora >= proximo_vida:
                 self._enviar_tick_vazio(so_presentes=True)
                 proximo_vida = agora + tick_s
             time.sleep(0.01)
@@ -314,7 +314,7 @@ class Host:
     def _tratar_input(self, pid, msg):
         j = self.jog[pid]
         if not j["conectado"]:
-            return                                    # quem foi dado como ausente não volta
+            return
         if not j["presente"]:
             log.debug("INPUT de pid %s antes do HELLO", pid)
             return
@@ -341,16 +341,16 @@ class Host:
                 continue
             if so_pendentes and j["ack"] >= len(self.historico):
                     continue
-            recs = self.historico[j["ack"]: j["ack"] + JANELA]  # ciclos ack+1 ... ack+8
+            recs = self.historico[j["ack"]: j["ack"] + JANELA]
             msg = {"v": 1, "t": "TICK", "m": self.match_start["match_id"],
                    "pid": self.meu_pid, "recs": recs}
             while len(recs) > 1 and len(encode(msg)) > MAX_DATAGRAMA:
-                recs = recs[:-1]  # corta o fim, mantém o começo
+                recs = recs[:-1]
                 msg["recs"] = recs
             self._enviar(pid, msg)
 
     def _fase_ending(self):
-        """Reenvia o registro final até todos confirmarem (ack >= n_final) ou dar timeout."""
+
         n_final = len(self.historico)
         tick_s = self.tick_ms / 1000
         inicio = time.monotonic()
@@ -385,7 +385,7 @@ class Host:
         self.estado = "FINISHED"
 
     def _verificar_timeouts(self, agora=None):
-        """Marca como desconectado quem ficou sem INPUT válido por peer_timeout_ms."""
+
         agora = time.monotonic() if agora is None else agora
         for pid, j in self.jog.items():
             if not j["conectado"] or j["visto"] is None:
@@ -405,7 +405,7 @@ class Host:
         self.ui.draw(self.view)
 
     def _ler_teclado(self):
-        """Lê o teclado do host (sem bloquear): atualiza a direção desejada ou o pedido de saída."""
+
         if self.ui is None:
             return
         tecla = self.ui.poll_input()
@@ -415,18 +415,18 @@ class Host:
             self.dir_host = tecla
 
     def _executar_ciclo(self):
-        """Roda um ciclo, guarda o registro e manda os TICKs. Devolve o campo 'end'."""
+
         n = len(self.historico) + 1
-        self._verificar_timeouts()  # <-- nova
+        self._verificar_timeouts()
         desejadas = {pid: j["dir"] for pid, j in self.jog.items() if j["dir"] is not None}
-        if self.dir_host is not None:  # <-- nova
+        if self.dir_host is not None:
             desejadas[self.meu_pid] = self.dir_host
         registro = step(self.jogo, desejadas, self.a_eliminar, n)
         self.a_eliminar = set()
         self.historico.append(registro)
         self._enviar_ticks()
-        self.view.apply_record(registro)  # <-- nova
-        self._desenhar()  # <-- nova
+        self.view.apply_record(registro)
+        self._desenhar()
         for pid, motivo in registro["el"]:
             log.info("ciclo %d: %s eliminado (%s)", n, self.nomes.get(pid, pid), motivo)
         if registro["end"] is not None:
@@ -439,8 +439,8 @@ class Host:
         while True:
             for dados, addr in self._receber_tudo():
                 self._tratar_datagrama(dados, addr)
-            self._ler_teclado()  # <-- nova
-            if self.quer_sair:  # <-- nova
+            self._ler_teclado()
+            if self.quer_sair:
                     return None
             agora = time.monotonic()
             if agora < proximo:
@@ -457,7 +457,7 @@ class Host:
             pid = p["slot"]
             self.nomes[pid] = p["name"]
             if pid == self.meu_pid:
-                continue  # o host não é "peer" de si mesmo
+                continue
             addr = (p["host"], int(p["port"]))
             self.jog[pid] = {
                 "addr": addr,
@@ -472,15 +472,15 @@ class Host:
         log.info("Jogadores: %s", self.jog)
 
     def _pid_da_origem(self, addr):
-        """Devolve o pid dono desse endereço, ou None se for desconhecido."""
+
         return self.addr_para_pid.get(addr)
 
     def _abrir_socket(self):
         eu = next(p for p in self.match_start["players"] if p["slot"] == 0)
-        bind_host = self.config.get("peer", {}).get("bind_host", "0.0.0.0")  # (1) define bind_host
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # (2) cria ANTES
+        bind_host = self.config.get("peer", {}).get("bind_host", "0.0.0.0")
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
-            self.sock.bind((bind_host, eu["port"]))  # (3) bind uma vez só
+            self.sock.bind((bind_host, eu["port"]))
         except OSError as e:
             log.error("não foi possível abrir %s:%s (%s). Já existe outro host nessa porta?",
                       bind_host, eu["port"], e)
@@ -488,14 +488,14 @@ class Host:
             raise
         self.sock.setblocking(False)
         sim = self.config.get("sim")
-        if sim:                                      # rede ruim simulada (só em teste)
+        if sim:
             from common.simnet import SimSocket
             self.sock = SimSocket(self.sock, **sim)
             log.warning("REDE SIMULADA ativa: %s", sim)
         log.info("Host escutando em %s:%s", bind_host, eu["port"])
 
     def _receber_tudo(self):
-        """Lê todos os datagramas pendentes. Devolve [(dados, addr), ...]."""
+
         recebidos = []
         while True:
             try:
@@ -503,12 +503,12 @@ class Host:
             except BlockingIOError:
                 break                    # acabou o que tinha
             except ConnectionResetError:
-                continue                 # Windows avisa quando um peer fecha
+                continue
             recebidos.append((dados, addr))
         return recebidos
 
     def _abortado(self):
-        """Fecha a partida como ABORT (uma vez só) e devolve o resultado."""
+
         if self.estado != "ABORTED":
             self._abortar("host saiu")
         return {"result": "ABORT", "winner": None}
@@ -540,7 +540,7 @@ class Host:
         try:
             return self._rodar_partida()
         except KeyboardInterrupt:
-            if self.resultado is not None:           # a partida já tinha acabado (fase ENDING)
+            if self.resultado is not None:
                 log.warning("host interrompido (Ctrl+C) depois do fim da partida")
                 return self.resultado
             if self.estado != "ABORTED":
