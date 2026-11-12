@@ -145,9 +145,9 @@ class Host:
         self.view.load_welcome(welcome_state(self.jogo, self.tick_ms))
         log.info("Host criado (partida %s)", match_start.get("match_id"))
 
-    def _enviar_tick_vazio(self):
+    def _enviar_tick_vazio(self, so_presentes=False):
         for pid, j in self.jog.items():
-            if j["conectado"]:
+            if j["conectado"] and (j["presente"] or not so_presentes):
                 self._enviar(pid, {"v": 1, "t": "TICK", "m": self.match_start["match_id"],
                                    "pid": self.meu_pid, "recs": []})
 
