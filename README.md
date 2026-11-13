@@ -5,9 +5,11 @@ Jogo multijogador de **motos de luz em tempo real (estilo Tron)** com arquitetur
 Trabalho prático de Redes de Computadores: projeto e implementação de um protocolo de camada de aplicação.
 
 - **Jogo:** Opção 1, Motos de Luz (Tron)
-- **Linguagem:** Python 3.10+ (somente API de sockets da biblioteca padrão para a rede)
+- **Linguagem:** Python 3.10+ (somente a API de sockets da biblioteca padrão para a rede). Os comandos deste README usam `python3`; em algumas distribuições o comando equivalente é `python`
 - **Transporte:** TCP (jogador ↔ lobby) e UDP (jogador ↔ jogador)
 - **Jogadores por partida:** 3 a 4, cada um em um processo separado
+
+> As partes marcadas com `[AJUSTAR]` ou `[CONFERIR]` dependem de detalhes do código final (nomes de arquivos, comandos) ou de decisões ainda não confirmadas entre os integrantes. O resto descreve o protocolo e o comportamento do host, que foram implementados e testados.
 
 ---
 
@@ -87,26 +89,32 @@ sequenceDiagram
     Note over L: lobby pode cair aqui sem afetar a partida
 ```
 
-Depois do `MATCH_START`, **nenhuma mensagem de jogo passa pelo lobby**. A conexão TCP com o lobby é mantida apenas para avisar o fim da partida e voltar ao menu; se o lobby cair, os jogadores apenas registram o fato em log e seguem jogando.
+Depois do `MATCH_START`, **nenhuma mensagem de jogo passa pelo lobby**. Como o processo do jogador cuida da partida em um único laço e não atende o TCP durante ela, o jogador **fecha a conexão com o lobby logo depois do `MATCH_START`**, e o lobby trata o fechamento de quem está em partida como normal (seção 11). `[CONFERIR com lobby e main.py]`. Se o lobby cair antes ou durante a partida, a partida em andamento não é afetada.
 
 ## 3. Estrutura do projeto
 
-`[AJUSTAR]` Estrutura planejada:
+`[AJUSTAR]` Estrutura do projeto:
 
 ```
 DualNode/
+├── main.py                # ponto de entrada do jogador
 ├── lobby/
+│   ├── __init__.py
 │   └── server.py          # servidor de lobby (TCP)
 ├── peer/
-│   ├── main.py            # ponto de entrada do jogador
+│   ├── __init__.py
 │   ├── lobby_client.py    # conversa com o lobby (TCP)
+│   ├── lobby_ui.py        # telas do lobby em ASCII
 │   ├── host.py            # papel de host/árbitro (UDP)
 │   ├── client.py          # papel de jogador comum (UDP)
-│   └── ui.py              # interface em terminal
+│   └── ui.py              # tela do jogo (curses)
 ├── common/
+│   ├── __init__.py
 │   ├── protocol.py        # codificação/validação das mensagens
 │   ├── game_logic.py      # regras do jogo (ciclo determinístico)
-│   └── config.py          # leitura de configuração
+│   ├── config.py          # leitura de configuração
+│   └── simnet.py          # simulador de perda/atraso (só para testes)
+├── testes_manuais/        # scripts de teste e de cenários (seção 16)
 ├── docs/
 ├── logs/                  # gerado em execução
 ├── config.example.json
@@ -118,10 +126,12 @@ DualNode/
 
 - Python 3.10 ou superior.
 - Rede: processos em máquinas diferentes da mesma rede local. Liberar no firewall a porta TCP do lobby e as portas UDP dos jogadores.
-- Bibliotecas: apenas a biblioteca padrão (`socket`, `selectors`/`threading`, `json`, `logging`, `curses`). Em Windows, a interface de terminal usa `pip install windows-curses`.
+- Bibliotecas: apenas a biblioteca padrão (`socket`, `json`, `logging`, `curses`, entre outras). Em Windows, a interface de terminal usa `pip install windows-curses`.
+- Terminal: pelo menos **80 × 24** para a tela do jogo (se for menor, a tela avisa o tamanho necessário).
+- Firewall: liberar a porta TCP do lobby e as portas UDP dos jogadores **em todas as máquinas** (o host envia para a porta de cada peer), por exemplo `sudo ufw allow 6001:6003/udp`. Redes que isolam os clientes entre si (comum em Wi-Fi de campus) impedem o jogo; use um roteador próprio ou o hotspot de um celular.
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt    # [AJUSTAR] (pode conter apenas windows-curses)
 ```
@@ -163,24 +173,27 @@ Endereços e portas **não ficam no código**: vêm de um arquivo JSON e podem s
 | `peer.advertise_host` | IP que o jogador informa aos outros. Se `null`, o lobby usa o IP de origem da conexão TCP. |
 | `peer.udp_port` | Porta UDP do jogador. |
 | `timeouts.*` | Prazos de detecção de falha (ver [seção 15](#15-tolerância-a-falhas)). |
+| `sim` (opcional) | Só para testes: `{"loss": 0.2, "delay_ms": 80, "jitter_ms": 40, "seed": 7}` simula perda, atraso e jitter nos dois sentidos no socket do host. Não deve constar na configuração normal. |
+
+O host lê da configuração exatamente estas chaves: `peer.bind_host`, `timeouts.hello_deadline_ms`, `timeouts.peer_timeout_ms` e, opcionalmente, `sim`. O campo `config` da mensagem `MATCH_START` (largura, altura e `tick_ms`) é outra coisa: descreve a arena.
 
 ## 6. Como executar
 
-`[AJUSTAR]` Comandos propostos:
+`[AJUSTAR]` Comandos (conferir com o código final):
 
 **1. Lobby** (na máquina do servidor):
 
 ```bash
-python -m lobby.server --config config.json
-# ou: python -m lobby.server --host 0.0.0.0 --port 5000
+python3 -m lobby.server --config config.json
+# ou: python3 -m lobby.server --host 0.0.0.0 --port 5000
 ```
 
 **2. Jogadores** (um processo por jogador, na mesma máquina em portas distintas ou em máquinas diferentes):
 
 ```bash
-python -m peer.main --config config.json --name Alice --udp-port 6001
-python -m peer.main --config config.json --name Bob   --udp-port 6002
-python -m peer.main --config config.json --name Carol --udp-port 6003
+python3 main.py --config config.json --name Alice --udp-port 6001
+python3 main.py --config config.json --name Bob   --udp-port 6002
+python3 main.py --config config.json --name Carol --udp-port 6003
 # sobrescrevendo o lobby: --lobby-host 192.168.0.10 --lobby-port 5000
 ```
 
@@ -191,7 +204,9 @@ python -m peer.main --config config.json --name Carol --udp-port 6003
 3. Quando houver pelo menos 3 jogadores, Alice escolhe *Iniciar*.
 4. Contagem regressiva e início.
 
-**Opções de depuração** (para os testes da seção 16): `--sim-loss 0.2` (descarta 20% dos datagramas UDP recebidos), `--sim-delay-ms 80` (atraso artificial) e `--log-level DEBUG`. Logs em `logs/`.
+Execute sempre a partir da raiz do projeto. Em máquinas diferentes, use o IP real do lobby em `--lobby-host`; os endereços que o lobby entrega no `MATCH_START` precisam ser **IPs numéricos alcançáveis** pelos outros jogadores (`localhost` ou `0.0.0.0` quebram a validação de origem).
+
+**Opções de teste** (seção 16) `[AJUSTAR]`: `--sim-loss 0.2` (descarta 20% dos datagramas, nos dois sentidos) e `--sim-delay-ms 80` (atraso artificial) preenchem o bloco `sim` da configuração do **host**; como todo o tráfego da partida passa por ele, basta aplicá-los ali. O log do host fica em `logs/` (um arquivo por execução: copie-o depois de cada cenário que for para o relatório).
 
 ## 7. Como jogar
 
@@ -201,7 +216,7 @@ python -m peer.main --config config.json --name Carol --udp-port 6003
 | `S` / `↓` | Baixo |
 | `A` / `←` | Esquerda |
 | `D` / `→` | Direita |
-| `Q` | Sair da partida |
+| `Q` | Sair da partida (se quem sai é o host, a partida termina para todos) |
 
 A moto de cada jogador aparece com um símbolo/cor próprio (`0`–`3`); rastros permanecem na tela mesmo após a eliminação. Jogadores eliminados continuam assistindo até o fim da partida.
 
@@ -250,7 +265,7 @@ O resultado do ciclo é publicado como um **registro de ciclo** (campo `recs` da
 | `JOIN_MATCH` | `match_id` | Entra em uma partida aberta. |
 | `LEAVE_MATCH` | (nenhum) | Sai da partida em que está (antes de iniciar). |
 | `START_MATCH` | (nenhum) | Só o criador. Exige ≥ 3 jogadores. |
-| `MATCH_END` | `winner` (pid ou `null` em empate) | Host informa o fim da partida (opcional, melhor esforço). |
+| `MATCH_END` | `winner` (pid ou `null` em empate) | Host informa o fim da partida. Opcional e melhor esforço: só se a conexão com o lobby ainda estiver aberta. |
 | `PING` / `PONG` | (nenhum) | Verificação de vida, nos dois sentidos. |
 
 ### Lobby → Jogador
@@ -287,10 +302,10 @@ Exemplo de `MATCH_START`:
 | Tipo | Sentido | Campos | Significado |
 |------|---------|--------|-------------|
 | `HELLO` | peer → host | `pid` | "Estou pronto." Reenviado a cada `hello_retry_ms` até chegar `WELCOME`. |
-| `WELCOME` | host → peer | `state`: `{width, height, tick_ms, players:[{pid,x,y,dir}]}`, `countdown_ms` | Estado inicial. Idempotente: respondido a cada `HELLO` recebido. |
-| `INPUT` | peer → host | `pid`, `iseq` (inteiro crescente), `dir` (`U`/`D`/`L`/`R`), `ack` (último ciclo aplicado, 0 se nenhum) | Direção desejada, **enviada em todo ciclo**, mesmo sem mudança. Serve como comando, confirmação e sinal de vida. |
-| `TICK` | host → peer | `recs`: lista de registros de ciclo (consecutivos, no máximo 8) | Resultados dos ciclos. Enviado a cada ciclo para todos, mesmo com `recs` vazio (sinal de vida durante a contagem). |
-| `ABORT` | host → peers | `reason` | Host encerra a partida de forma controlada (melhor esforço; os peers também detectam por timeout). |
+| `WELCOME` | host → peer | `pid` (do host), `state`: `{width, height, tick_ms, players:[{pid,x,y,dir}]}`, `countdown_ms` | Estado inicial. Idempotente: respondido a cada `HELLO` recebido. |
+| `INPUT` | peer → host | `pid`, `iseq` (inteiro crescente, a partir de 1), `dir` (`U`/`D`/`L`/`R`), `ack` (último ciclo aplicado, 0 se nenhum) | Direção desejada, **enviada em todo ciclo**, mesmo sem mudança. Serve como comando, confirmação e sinal de vida. |
+| `TICK` | host → peer | `recs`: lista de registros de ciclo (consecutivos, no máximo 8) | Resultados dos ciclos. Enviado a cada `tick_ms` **desde o `WELCOME`** até o fim: na espera dos demais jogadores e na contagem vai com `recs` vazio (sinal de vida). Durante o jogo, cada peer recebe a janela que corresponde ao seu `ack`. |
+| `ABORT` | host → peers | `reason` (`host saiu`, `host interrompido (Ctrl+C)` ou `jogadores insuficientes`) | Host encerra a partida de forma controlada. Enviado 3 vezes, com 50 ms entre elas, apenas a peers conectados. É melhor esforço: os peers também detectam por timeout. |
 
 **Registro de ciclo** (elemento de `recs`):
 
@@ -315,9 +330,24 @@ O UDP não garante entrega, ordem nem ausência de duplicatas. O protocolo resol
 1. **Ordem e duplicatas:** cada registro tem um `n` consecutivo. O peer aplica **apenas** o registro `n = último_aplicado + 1`; registros com `n` menor ou igual são descartados (duplicata) e com `n` maior são ignorados até o anterior chegar.
 2. **Recuperação de perdas (confirmação cumulativa + redundância):** todo `INPUT` carrega `ack`. A cada ciclo, o host envia a cada peer os registros de `ack + 1` até `min(ciclo_atual, ack + 8)`. Assim, se um `TICK` se perde, o seguinte já repete os registros que faltam, e um peer atrasado se atualiza até 8 ciclos por datagrama.
 3. **Entrada idempotente:** o `INPUT` é estado ("a direção desejada é X"), não evento. A perda de um `INPUT` é compensada pelo seguinte; o host usa o de maior `iseq` (reordenados/antigos são descartados).
-4. **Handshake:** `HELLO` é reenviado até chegar `WELCOME`; `WELCOME` é reenviado a cada `HELLO` repetido.
-5. **Fim confiável:** após o registro com `end`, o host continua enviando-o até todos os peers vivos confirmarem (`ack` ≥ `n` final) ou até `peer_timeout_ms`. Os peers continuam enviando `INPUT` por até 2 s após o fim para confirmar.
-6. **Detecção de vida:** `INPUT` (peer → host) e `TICK` (host → peer) são enviados a todo ciclo e funcionam como *heartbeat*.
+4. **Handshake:** `HELLO` é reenviado até chegar `WELCOME`; o host responde `WELCOME` a **todo** `HELLO` válido, inclusive repetido (o `WELCOME` anterior pode ter se perdido).
+5. **Sinal de vida:** o peer manda `INPUT` a todo ciclo e o host manda `TICK` a todo `tick_ms`, **desde o `WELCOME`**: enquanto o host espera os outros jogadores e durante a contagem, o `TICK` vai vazio. Sem isso, um peer que se apresenta cedo esgotaria o `host_timeout` esperando um peer lento.
+6. **Fim confiável:** após o registro com `end`, o host entra em `ENDING` e continua enviando-o, só a quem ainda não confirmou, até todos os peers conectados confirmarem (`ack` ≥ `n` final) ou até `peer_timeout_ms`. Os peers continuam enviando `INPUT` com o `ack` final por cerca de 2 s depois do fim. Peers que morreram no jogo, mas ainda estão conectados, também confirmam.
+7. **Encerramento:** o `ABORT` é enviado em 3 rajadas espaçadas; como é melhor esforço, quem não o receber detecta a falta de `TICK` pelo próprio timeout.
+
+### Parâmetros do protocolo
+
+| Parâmetro | Valor padrão | Onde |
+|-----------|--------------|------|
+| `tick_ms` | 100 ms (10 ciclos/s) | `lobby.game`, entregue no `MATCH_START` |
+| Contagem regressiva | 3000 ms (30 `TICK` vazios) | constante `COUNTDOWN_MS` |
+| `hello_retry_ms` | 500 ms | cliente |
+| `hello_deadline_ms` | 10000 ms | `timeouts` |
+| `peer_timeout_ms` | 3000 ms (30 `INPUT` seguidos perdidos) | `timeouts` |
+| `host_timeout_ms` | 3000 ms | `timeouts` (cliente) |
+| Janela de registros por `TICK` | 8 | constante `JANELA` |
+| Tamanho máximo do datagrama | 1200 bytes | constante `MAX_DATAGRAMA` |
+| Reajuste do relógio do ciclo | atraso maior que 5 ciclos | constante `TOLERANCIA_ATRASO` |
 
 ## 11. Máquinas de estados
 
@@ -342,7 +372,7 @@ stateDiagram-v2
 | `CONNECTED` | `REGISTER`, `PONG` | `ERROR BAD_STATE` |
 | `REGISTERED` | `LIST_MATCHES`, `CREATE_MATCH`, `JOIN_MATCH`, `PONG` | `ERROR BAD_STATE` |
 | `IN_ROOM` | `LEAVE_MATCH`, `START_MATCH` (criador), `LIST_MATCHES`, `PONG` | `ERROR BAD_STATE` |
-| `IN_GAME` | `MATCH_END` (host), `PONG` | ignorada |
+| `IN_GAME` | `MATCH_END` (host, opcional) | ignorada. O lobby **não** envia `PING` a quem está em partida, e o fechamento da conexão é normal `[CONFERIR]` |
 
 ### Jogador comum (peer ≠ host) durante a partida
 
@@ -350,7 +380,7 @@ stateDiagram-v2
 stateDiagram-v2
     [*] --> JOINING: recebeu MATCH_START
     JOINING --> READY: WELCOME
-    JOINING --> ABORTED: hello_deadline
+    JOINING --> ABORTED: hello_deadline / ABORT
     READY --> PLAYING: primeiro TICK com recs
     PLAYING --> SPECTATING: própria moto eliminada
     PLAYING --> FINISHED: registro com end
@@ -371,37 +401,49 @@ stateDiagram-v2
     COUNTDOWN --> RUNNING: countdown_ms esgotado
     RUNNING --> ENDING: ciclo com end
     ENDING --> FINISHED: todos confirmaram ou peer_timeout
-    COLLECTING --> ABORTED: menos de 2 jogadores presentes
-    RUNNING --> ABORTED: saída do host (ABORT)
+    COLLECTING --> ABORTED: nenhum peer se apresentou / saída do host
+    COUNTDOWN --> ABORTED: saída do host
+    RUNNING --> ABORTED: saída do host
     FINISHED --> [*]
     ABORTED --> [*]
 ```
 
-- `COLLECTING`: responde `HELLO` com `WELCOME`. Quem não enviar `HELLO` até `hello_deadline_ms` é tratado como desconectado e eliminado (`DISC`) no ciclo 1.
-- `COUNTDOWN`: envia `TICK` vazios (sinal de vida) enquanto aguarda `countdown_ms`.
-- `RUNNING`: a cada `tick_ms`, aplica o algoritmo da seção 8, grava o registro no histórico e envia `TICK` a cada peer.
+- `COLLECTING`: responde `HELLO` com `WELCOME` e, a cada `tick_ms`, manda `TICK` vazio aos peers que já se apresentaram. Sai quando todos se apresentaram ou o `hello_deadline_ms` acaba. Quem não enviou `HELLO` é tratado como desconectado e eliminado (`DISC`) no ciclo 1; se **nenhum** peer se apresentou, a partida é abortada (`jogadores insuficientes`).
+- `COUNTDOWN`: envia 30 `TICK` vazios (sinal de vida), um por `tick_ms`, durante `countdown_ms`. A contagem ainda aceita `HELLO` repetido.
+- `RUNNING`: a cada `tick_ms`, verifica os timeouts de peers, aplica o algoritmo da seção 8, grava o registro no histórico e envia a cada peer a janela de registros que corresponde ao seu `ack`.
+- `ENDING`: reenvia o registro final apenas a quem ainda não confirmou, até todos confirmarem ou o `peer_timeout_ms` acabar. A tecla `Q` aqui só interrompe a espera: o resultado real da partida é preservado.
+- `ABORTED`: o host saiu antes do fim da partida (`Q` ou `Ctrl+C`) ou nenhum peer apareceu. Envia `ABORT` e encerra.
 
 ## 12. Mensagens inválidas, inesperadas ou ausentes
 
 ### UDP (partida)
 
+Todo datagrama recebido pelo host passa por estas checagens, nesta ordem (das mais baratas às mais caras). Se alguma falhar, ele é **descartado em silêncio** e o motivo vai para o log de depuração.
+
+| # | Checagem | Descarta quando |
+|---|----------|-----------------|
+| 1 | Tamanho | Maior que 1200 bytes |
+| 2 | Decodificação | Não é UTF-8, não é JSON, não é um objeto, `v` diferente de 1 ou campo obrigatório ausente |
+| 3 | Partida | `m` é de outra partida |
+| 4 | Identificador | `pid` não é um número inteiro |
+| 5 | Origem | O endereço (IP e porta) não pertence a nenhum peer da partida |
+| 6 | Coerência | O `pid` informado não é o do endereço de origem (um peer se passando por outro) |
+| 7 | Estado | O tipo de mensagem não é aceito no estado atual (por exemplo, `HELLO` durante o jogo) |
+
+Dentro de um `INPUT` que passou pelas checagens, o host ainda exige: `iseq` e `ack` inteiros (booleanos não valem) e `ack` não negativo; `dir` em `U`, `D`, `L` ou `R`; e `iseq` maior que o último aceito (repetido ou atrasado é descartado). O `ack` aceito nunca passa do tamanho do histórico e nunca retrocede.
+
 | Situação | Tratamento |
 |----------|------------|
-| JSON malformado, campo obrigatório ausente ou com tipo errado | Descartar silenciosamente e registrar em log. |
-| `v` diferente de 1, `t` desconhecido | Descartar. |
-| `m` diferente do `match_id` da partida | Descartar. |
-| Endereço de origem não corresponde ao `host:port` do `pid` informado no `MATCH_START` | Descartar (evita falsificação simples e interferência de terceiros). |
-| `dir` inválida | Descartar o `INPUT`. |
-| `INPUT` com `iseq` ≤ ao já visto | Descartar (duplicado/atrasado). |
 | Direção oposta ao movimento atual | Ignorada pelo host; a moto mantém a direção. |
-| `INPUT` de peer já eliminado ou desconectado | Usado só para `ack`/vida; a direção é ignorada. |
-| `TICK` de endereço que não é o host | Descartar. |
-| `TICK` com `n` repetido ou fora de ordem | Repetido: descartar. Futuro: ignorar até receber o anterior. |
+| `INPUT` de peer já eliminado no jogo | Só atualiza o `ack` e a vida do peer; a direção não tem efeito. |
+| `INPUT` ou `HELLO` de peer já dado como desconectado (`DISC`) | Ignorado: quem caiu não volta à partida. |
 | `HELLO` repetido | Reenviar `WELCOME` (idempotente). |
-| `HELLO`/`INPUT` fora de estado | Descartar. |
-| Datagrama maior que 1200 bytes | Descartar. |
-| **Ausência** de `INPUT` de um peer por `peer_timeout_ms` | Host elimina a moto com `DISC`. |
+| `TICK`, `WELCOME` ou `ABORT` de endereço que não é o do host (no peer) | Descartar. |
+| `TICK` com `n` repetido ou do futuro (no peer) | Repetido: descartar. Futuro: ignorar até receber o anterior. |
+| **Ausência** de `INPUT` válido por `peer_timeout_ms` | Host elimina a moto com `DISC`. |
+| **Ausência** de `HELLO` até `hello_deadline_ms` | `DISC` no ciclo 1; se ninguém se apresentar, `ABORT`. |
 | **Ausência** de `TICK` por `host_timeout_ms` | Peer encerra a partida (`HOST_LOST`). |
+| **Ausência** da confirmação do fim até `peer_timeout_ms` | Host desiste de esperar e devolve o resultado. |
 
 Nunca se responde com erro a UDP inválido: isso evitaria amplificação e *loops* entre implementações.
 
@@ -452,19 +494,23 @@ O ponto único de falha é aceito pelo enunciado, desde que a falha do host ence
 | Falha | Detecção | Comportamento |
 |-------|----------|---------------|
 | **Lobby cai antes do início** | Jogador: erro de TCP ou sem `PING` por `lobby_dead_ms` | Jogador informa que o lobby está indisponível; partidas ainda não iniciadas não prosseguem. |
-| **Lobby cai durante a partida** | Jogador: erro na conexão TCP | Registra em log e **segue jogando**. A partida não depende mais do lobby; só o aviso de fim (`MATCH_END`) deixa de ser enviado. |
-| **Peer comum cai** (processo morto, rede) | Host: sem `INPUT` por `peer_timeout_ms` (3 s) | Host elimina a moto com motivo `DISC` no próximo ciclo; o rastro permanece e a partida continua. Se sobrar só 1 viva, ela vence. |
-| **Peer cai antes de o jogo começar** | Host: sem `HELLO` por `hello_deadline_ms` | Eliminado (`DISC`) no ciclo 1. Se restar menos de 2 jogadores, `ABORT`. |
-| **Host cai** | Peers: sem `TICK` por `host_timeout_ms` (3 s) | Cada peer encerra a partida de forma **controlada** (`HOST_LOST`): mostra mensagem, para de enviar e volta ao menu. Não há eleição de novo host. |
-| **Host encerra voluntariamente** (`Q`/Ctrl+C) | Peers: `ABORT` ou timeout | Mesmo tratamento da queda do host. |
-| **Perda de pacotes UDP** | `ack` atrasado no host | Recuperação automática pela redundância dos `TICK`. |
+| **Lobby cai durante a partida** | Não afeta a partida | O jogo não usa o TCP do lobby depois do `MATCH_START`. |
+| **Peer cai durante a partida** (processo morto, rede) | Host: sem `INPUT` válido por `peer_timeout_ms` (3 s) | Host elimina a moto com `DISC` no próximo ciclo, **uma vez só**; o rastro permanece e a partida continua. Depois disso, deixa de enviar `TICK` a ele e ignora seus datagramas. Se sobrar só o host, ele vence. |
+| **Peer não se apresenta** | Host: sem `HELLO` por `hello_deadline_ms` | `DISC` no ciclo 1. Se **nenhum** peer se apresentar, `ABORT` com o motivo `jogadores insuficientes`. |
+| **Peer entra devagar** | Os demais já se apresentaram | O host manda `TICK` vazio a quem já entrou, para que não desista durante a espera. |
+| **Peer eliminado no jogo e depois some** | Host: sem `INPUT` | Nenhum `DISC` falso: só se elimina quem ainda está vivo. |
+| **Último `TICK` perdido** | Host: `ack` do peer menor que o último ciclo | O host reenvia o registro final até confirmar (`ENDING`). |
+| **Host sai voluntariamente** (`Q` ou `Ctrl+C`) antes do fim | Ação do usuário | `ABORT` (3 vezes) aos peers conectados, em qualquer fase. Depois do fim da partida, só para de esperar e o resultado real é preservado. |
+| **Host cai sem avisar** (processo morto, rede) | Peers: sem `TICK` por `host_timeout_ms` (3 s) | Cada peer encerra a partida de forma **controlada** (`HOST_LOST`): mostra mensagem, para de enviar e volta ao menu. Não há eleição de novo host. |
+| **`ABORT` perdido** | Peers: sem `TICK` por `host_timeout_ms` | O mesmo caminho da queda do host: o `ABORT` só acelera o aviso. |
+| **Perda de pacotes UDP** | `ack` atrasado no host | Recuperação automática pela janela de registros dos `TICK`. |
 | **Peer lento** (mas vivo) | `ack` atrasando | Recebe até 8 ciclos por datagrama para se atualizar. Se parar de enviar `INPUT` por 3 s, é tratado como desconectado. |
 
 Nenhum jogador fica travado indefinidamente: todo estado de espera tem um prazo (`hello_deadline_ms`, `peer_timeout_ms`, `host_timeout_ms`).
 
 ## 16. Cenários de teste
 
-Registrar logs/capturas de cada cenário no relatório técnico.
+Registrar logs/capturas de cada cenário no relatório técnico. O critério de aprovação é sempre o mesmo: **todos os processos terminam com o mesmo resultado e as mesmas eliminações, nos mesmos ciclos.**
 
 | # | Cenário | Como reproduzir | Resultado esperado |
 |---|---------|-----------------|--------------------|
@@ -473,18 +519,46 @@ Registrar logs/capturas de cada cenário no relatório técnico.
 | 3 | **Empate** | Últimos vivos eliminados no mesmo ciclo | `end: DRAW` em todos |
 | 4 | **Desconexão de peer** | `kill -9` em um jogador no meio da partida | Após ~3 s o host publica `DISC`; os demais continuam |
 | 5 | **Falha do lobby** | Encerrar o lobby com a partida em andamento | A partida segue até o fim sem interrupção |
-| 6 | **Falha do host** | Encerrar o host (jogador 0) | Em ~3 s os demais encerram a partida de forma controlada |
-| 7 | **Perda de pacotes** | `--sim-loss 0.2` (e/ou `--sim-delay-ms 80`) nos peers | Jogo segue e todos terminam com o mesmo resultado |
-| 8 | **Mensagens inválidas** | Enviar datagramas/linhas malformados (ex.: `echo '{"x":1}' \| nc -u host 6001`; `nc host 5000`) | UDP descartado; TCP responde `ERROR`; nada trava |
-| 9 | **Máquinas diferentes** | Lobby e jogadores em máquinas distintas da mesma rede | Mesmo comportamento do cenário 1 |
-| 10 | **Cancelamento na sala** | Criador sai antes de iniciar | `MATCH_CANCELLED` para os demais |
+| 6 | **Falha do host** | `kill -9` no host (jogador 0) | Em ~3 s os demais encerram a partida de forma controlada |
+| 7 | **Saída voluntária do host** | `Q` na contagem, `Q` no jogo e `Ctrl+C` no jogo | Os peers recebem o `ABORT` na hora, com o motivo |
+| 8 | **Perda de pacotes e atraso** | `sim` no host: 20% de perda, depois 20% com 80 ms de atraso | Jogo segue e todos terminam com o mesmo resultado |
+| 9 | **Último `TICK` perdido** | Um peer descarta os `TICK` que carregam o fim | O host insiste e o peer recebe o resultado (ou o host desiste depois do prazo) |
+| 10 | **Peer lento na entrada** | Abrir um dos peers só depois de ~8 s | Os que já entraram esperam sem desistir; o atrasado entra no prazo ou vira `DISC` |
+| 11 | **Mensagens inválidas** | Enviar datagramas/linhas malformados (ex.: `echo '{"x":1}' \| nc -u host 6001`; `nc host 5000`) | UDP descartado; TCP responde `ERROR`; nada trava |
+| 12 | **Máquinas diferentes** | Lobby e jogadores em máquinas distintas da mesma rede | Mesmo comportamento do cenário 1 |
+| 13 | **Cancelamento na sala** | Criador sai antes de iniciar | `MATCH_CANCELLED` para os demais |
+
+### Testes do módulo do host (sem o lobby) `[CONFERIR: testes_manuais/ está no repositório]`
+
+A pasta `testes_manuais/` traz scripts que exercitam o host e o cliente sem depender do lobby, com um arquivo `match_start.json` no mesmo formato da mensagem `MATCH_START`. Rodar sempre a partir da raiz, com `python3 -m`, **sem** a extensão `.py`:
+
+```bash
+# testes unitários (sem rede): cada um termina com "ok"
+for n in 2 3 7 8 9 10 11 12; do python3 -m testes_manuais.teste_passo$n | tail -1; done
+
+# partida entre máquinas, sem o lobby (o host é o primeiro IP)
+python3 -m testes_manuais.gerar_match_start IP_HOST IP_PEER1 IP_PEER2
+python3 -m testes_manuais.teste_peer12 match_start.json --pid 1      # em cada máquina de peer (--pid 2, ...)
+python3 -m testes_manuais.teste_host12 match_start.json              # na máquina do host (--sem-tela, --sim-loss, --sim-delay-ms)
+```
+
+Quando um peer não conecta, o que olhar:
+
+| O que aparece | Causa provável |
+|---------------|----------------|
+| O peer imprime `sem WELCOME` e o log do host tem `origem desconhecida` | Os datagramas chegam de um IP diferente do `match_start` (VPN, Docker, duas interfaces). Use o IP que o log mostra |
+| `sem WELCOME` e o log do host não mostra nada | Os pacotes não chegam: firewall, IP do host errado ou rede que isola os clientes. Testar com `nc -u -l 6001` no host e `nc -u IP 6001` no peer |
+| O peer recebe o `WELCOME` e depois `host sumiu` | O firewall **do peer** bloqueia o UDP de volta |
 
 ## 17. Decisões de projeto e limitações
 
 **Decisões**
 
 - Host autoritativo, determinístico e com algoritmo de ciclo independente da ordem dos jogadores (seção 8).
-- `INPUT` como estado, `TICK` com redundância e ack cumulativo, em vez de retransmissão por temporizador (seção 10).
+- `INPUT` como estado, `TICK` com janela de registros e `ack` cumulativo, em vez de retransmissão por temporizador (seção 10).
+- Relógio do ciclo monotônico, agendando cada ciclo a partir do anterior, para que um atraso pontual não se acumule.
+- Fim confiável (`ENDING`) e sinal de vida desde o `WELCOME`, para que nem o último `TICK` perdido nem um peer lento deixem alguém sem o resultado ou desistindo.
+- Saída controlada do host (`ABORT` em rajada de 3, espaçada), com o timeout do cliente como garantia.
 - JSON como formato de mensagem: legível para depuração e permitido pelo enunciado. Em contrapartida, ocupa mais bytes que um formato binário; ainda assim, os datagramas ficam bem abaixo de 1200 bytes.
 - Configuração do jogo (arena, velocidade) centralizada no lobby e entregue em `MATCH_START`, para que todos os participantes usem valores idênticos.
 
@@ -492,22 +566,28 @@ Registrar logs/capturas de cada cenário no relatório técnico.
 
 - Se o host cair, a partida termina (sem eleição de novo host).
 - O host tem latência zero em relação aos demais.
+- **Janela contra atraso da rede.** O `ack` que o host conhece está sempre uma ida e volta atrasado, e a janela cobre 8 ciclos (800 ms). Com atraso de ida e volta menor que isso, tudo funciona. Medimos com atraso simulado: 1,2 s de ida e volta deixa os peers atrasados, mas eles terminam com o resultado certo; com 2 s, eles não alcançam o host antes de ele encerrar. Em rede local o atraso é de poucos milissegundos. A saída seria aumentar a janela (cabem cerca de 14 registros em 1200 bytes) ou compactar o formato.
+- **O fim não tem garantia absoluta.** O host nunca tem certeza de que um peer soube o resultado: se todos os reenvios se perderem, ele desiste depois do prazo (é o problema dos dois generais). Com 30% de perda, perder 8 `TICK` seguidos é cerca de 0,007%.
 - Sem autenticação nem proteção contra um host malicioso; a validação de origem por `host:port` protege apenas contra interferência acidental.
+- Sem controle de congestionamento, o que é aceitável nesta escala.
 - Se um peer trocar de direção duas vezes dentro do mesmo ciclo, só a última direção válida é considerada.
+- O processo do jogador trata a partida em um único laço e não atende o TCP do lobby durante ela.
 - Sem suporte a NAT/Internet; o alvo é uma rede local.
 
-**Principais dificuldades encontradas:** ``
+**Principais dificuldades encontradas**
+
+- *Host:* a deriva do relógio ao dormir um intervalo fixo por ciclo; o último datagrama perdido, que deixava um peer sem o resultado; um peer lento que desistia durante a espera dos demais (só apareceu ao testar com IPs diferentes); a validação de origem, que exige que cada peer envie do mesmo socket em que escuta; e o conflito entre `print` e a tela do terminal, resolvido com log em arquivo.
+- *Demais módulos:* `[PREENCHER ao final do desenvolvimento]`
 
 ## 18. Equipe
 
 | Nome | Matrícula | Responsabilidades |
 |------|-----------|-------------------|
-| Washington Xavier|252024622|peer/host.py e interfaces|
-| LUIZ EDUARDO|252009134|common/protocol.py|
-| PABLO RAFAEL|221003986|peer/client.py|
-| SARA DA SILVA|202038281|common/game_logic.py|
+| Washington Xavier|252024622|peer/host.py e interfaces| 
+| LUIZ EDUARDO|252009134|common/protocol.py| 
+| PABLO RAFAEL|221003986|peer/client.py| 
+| SARA DA SILVA|202038281|common/game_logic.py| 
 |VITOR IVAN|231036309|lobby/server.py (TCP)|
-
 ---
 
 *Projeto acadêmico. Entrega final em 23/11/2026; apresentações a partir de 24/11/2026.*
