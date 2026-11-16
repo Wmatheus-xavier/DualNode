@@ -15,7 +15,7 @@ from peer.ui import GameView
 
 # step(): avança o jogo em um ciclo (um "tick") e devolve o registro do que aconteceu.
 try:
-    from common.game_logic import step
+    from common.game_logic import step, aplicar_registro
 except ImportError:
     # Direção contrária de cada uma (ninguém pode dar meia-volta de uma vez)
     _OPOSTO = {"U": "D", "D": "U", "L": "R", "R": "L"}
@@ -66,6 +66,9 @@ except ImportError:
             fim = {"result": "WIN", "winner": vivos[0]}
         return {"n": n, "mv": mv, "el": sorted(el), "end": fim}
 
+    def aplicar_registro(estado, registro):
+        # A step reserva já altera o estado por dentro, então não há o que fazer aqui
+        return estado
 
 # encode/decode: transformam mensagem (dict) em bytes pra mandar pela rede e vice-versa
 try:
@@ -557,6 +560,7 @@ class Host:
             desejadas[self.meu_pid] = self.dir_host
         # Aqui o jogo realmente anda um passo
         registro = step(self.jogo, desejadas, self.a_eliminar, n)
+        self.jogo = aplicar_registro(self.jogo, registro)
         # Os desconectados já foram tratados neste ciclo, então limpa a lista
         self.a_eliminar = set()
         self.historico.append(registro)
