@@ -1,11 +1,12 @@
 """peer/client.py - jogador comum (peer != host).
 
-NOTA (estado atual): este arquivo contem as PARTES 1 e 2:
+NOTA (estado atual): este arquivo contem as PARTES 1, 2 e 3:
   1) preparacao (ler o MATCH_START) e socket UDP unico;
-  2) enviar e receber mensagens, com filtro e validacao dos datagramas.
+  2) enviar e receber mensagens, com filtro e validacao dos datagramas;
+  3) handshake: HELLO com reenvio ate chegar o WELCOME.
 O metodo Client.run() ainda esta VAZIO: apenas levanta NotImplementedError.
 Se alguem iniciar uma partida como peer com esta versao, o main.py vai falhar
-nessa chamada. As proximas partes (handshake, INPUT, TICK, falhas) serao
+nessa chamada. As proximas partes (estado e tela, INPUT, TICK, falhas) serao
 adicionadas aqui, uma de cada vez.
 
 Como o main.py usa esta classe (main.py, funcao jogar):
@@ -250,6 +251,14 @@ class Client:
         self.config = info["config"]
         self.sock = None
         self.descartados = {}   # motivo -> quantidade (so para diagnostico/testes)
+        # preenchidos pelo handshake (Parte 3)
+        self.welcome = None            # mensagem WELCOME completa
+        self.state = None              # campo 'state' do WELCOME
+        self.countdown_ms = None
+        self.t_welcome = None          # time.monotonic() do momento do WELCOME
+        self.tick_ms = self.config.get("tick_ms", 100) if isinstance(self.config, dict) else 100
+        self.dir_desejada = None       # direcao inicial da minha moto
+        self.tentativas_hello = 0
 
     # ---------- Parte 1: socket ----------
 
@@ -351,6 +360,76 @@ class Client:
             return None
         return msg
 
+    # ---------- Parte 3: handshake ----------
+
+    def prazos(self):
+        """(intervalo_do_reenvio, prazo_total) do HELLO, em segundos.
+        Le timeouts.hello_retry_ms e timeouts.hello_deadline_ms da config
+        (padroes do README: 500 ms e 10000 ms)."""
+        t = self.cfg.get("timeouts") or {}
+        retry = t.get("hello_retry_ms", 500) / 1000.0
+        deadline = t.get("hello_deadline_ms", 10000) / 1000.0
+        return max(retry, 0.001), max(deadline, 0.001)
+
+    def handshake(self):
+        """Envia HELLO a cada hello_retry_ms ate chegar o WELCOME.
+
+        O host responde WELCOME a todo HELLO (inclusive repetido), entao o
+        reenvio resolve tanto um HELLO perdido quanto um WELCOME perdido.
+
+        Devolve um dict:
+          {"ok": True,  "welcome": <mensagem>}                  deu certo
+          {"ok": False, "motivo": "DEADLINE"}                   10 s sem WELCOME
+          {"ok": False, "motivo": "ABORT", "reason": <texto>}   host mandou ABORT
+        No sucesso, preenche self.welcome, self.state, self.countdown_ms,
+        self.t_welcome, self.tick_ms e self.dir_desejada.
+
+        Dentro desta espera, TICK (que o host pode mandar antes de um WELCOME
+        perdido) e WELCOME invalido sao ignorados: o proximo HELLO pede outro
+        WELCOME.
+        """
+        if self.sock is None:
+            self.abrir()
+        retry, deadline = self.prazos()
+        inicio = time.monotonic()
+        fim = inicio + deadline
+        proximo_envio = inicio
+        self.tentativas_hello = 0
+        while True:
+            agora = time.monotonic()
+            if agora >= fim:
+                log.warning("sem WELCOME apos %d HELLO em %.1f s",
+                            self.tentativas_hello, deadline)
+                return {"ok": False, "motivo": "DEADLINE"}
+            if agora >= proximo_envio:
+                self.enviar(proto.hello(self.match_id, self.meu_pid))
+                self.tentativas_hello += 1
+                proximo_envio = agora + retry
+            espera = max(min(proximo_envio, fim) - time.monotonic(), 0.0)
+            msg = self.receber(espera)
+            if msg is None:
+                continue
+            if msg["t"] == "WELCOME":
+                self._guardar_welcome(msg)
+                log.info("WELCOME recebido apos %d HELLO", self.tentativas_hello)
+                return {"ok": True, "welcome": msg}
+            if msg["t"] == "ABORT":
+                log.warning("ABORT do host no handshake: %s", msg["reason"])
+                return {"ok": False, "motivo": "ABORT", "reason": msg["reason"]}
+            # TICK antes do WELCOME: ignorar (nao ha estado para aplicar)
+
+    def _guardar_welcome(self, msg):
+        self.welcome = msg
+        self.state = msg["state"]
+        self.countdown_ms = msg["countdown_ms"]
+        self.t_welcome = time.monotonic()
+        tick = self.state.get("tick_ms")
+        if isinstance(tick, int) and not isinstance(tick, bool) and tick > 0:
+            self.tick_ms = tick
+        for jogador in self.state["players"]:
+            if jogador["pid"] == self.meu_pid:
+                self.dir_desejada = jogador["dir"]
+
     def run(self):
-        """VAZIO por enquanto (Partes 1 e 2). Sera preenchido nas proximas."""
+        """VAZIO por enquanto (Partes 1 a 3). Sera preenchido nas proximas."""
         raise NotImplementedError("Client.run() ainda nao foi implementado")
