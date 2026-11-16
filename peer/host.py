@@ -654,7 +654,7 @@ class Host:
                                   delay_ms=sim.get("delay_ms", 0.0),
                                   jitter_ms=sim.get("jitter_ms", 0.0), seed=sim.get("seed"))
             log.warning("REDE SIMULADA ativa: %s", sim)
-            
+
     def _receber_tudo(self):
         # Esvazia a fila do socket: lê tudo que chegou até agora e devolve a lista
         # de (dados, endereço). Como o socket não bloqueia, quando não tem mais
