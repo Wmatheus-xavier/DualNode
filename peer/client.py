@@ -1,7 +1,17 @@
 """peer/client.py - jogador comum (peer != host).
 
-PARTE 1: preparacao (ler o MATCH_START) e socket UDP unico.
-As proximas partes (handshake, INPUT, TICK, falhas) serao adicionadas aqui.
+NOTA (estado atual): este arquivo contem so a PARTE 1 (preparacao e socket UDP).
+O metodo Client.run() esta VAZIO: apenas levanta NotImplementedError.
+Se alguem iniciar uma partida como peer com esta versao, o main.py vai falhar
+nessa chamada. As proximas partes (handshake, INPUT, TICK, falhas) serao
+adicionadas aqui, uma de cada vez.
+
+Como o main.py usa esta classe (main.py, funcao jogar):
+    resultado = Client(cfg, match_start, meu_pid).run()
+    - meu_pid e o slot do jogador (lobby.slot).
+    - run() deve devolver um dict com "result" ("WIN", "DRAW", "HOST_LOST" ou
+      outro valor, que o main trata como partida encerrada) e, se houver,
+      "winner".
 """
 
 import ipaddress
@@ -92,3 +102,43 @@ def abrir_socket(bind_host, porta):
         sock.close()
         raise ErroPreparacao("nao foi possivel abrir a porta UDP %s: %s" % (porta, e))
     return sock
+
+
+class Client:
+    """Jogador comum. Assinatura esperada pelo main.py:
+
+        Client(cfg, match_start, meu_pid).run()
+
+    ui: opcional. Se vier None, as proximas partes abrirao a propria
+    TerminalUI (e farao o wait_key no fim). Se vier uma TerminalUI do main,
+    o main e quem faz o wait_key.
+    """
+
+    def __init__(self, cfg, match_start, meu_pid, ui=None):
+        self.cfg = cfg
+        self.ui = ui
+        # Levanta ErroPreparacao se o MATCH_START nao servir para este peer.
+        info = ler_match_start(match_start, meu_pid)
+        self.match_id = info["match_id"]
+        self.meu_pid = info["meu_pid"]
+        self.host_pid = info["host_pid"]
+        self.host_addr = info["host_addr"]
+        self.meu_addr = info["meu_addr"]
+        self.players = info["players"]
+        self.config = info["config"]
+        self.sock = None
+
+    def abrir(self):
+        """Abre o socket UDP unico (bind na porta registrada no lobby)."""
+        bind_host = (self.cfg.get("peer") or {}).get("bind_host") or "0.0.0.0"
+        self.sock = abrir_socket(bind_host, self.meu_addr[1])
+        return self.sock
+
+    def fechar(self):
+        if self.sock is not None:
+            self.sock.close()
+            self.sock = None
+
+    def run(self):
+        """VAZIO por enquanto (Parte 1). Sera preenchido nas proximas partes."""
+        raise NotImplementedError("Client.run() ainda nao foi implementado")
