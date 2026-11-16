@@ -7,7 +7,7 @@ import copy
 import socket
 import unittest
 
-from peer.client import ErroPreparacao, abrir_socket, ler_match_start
+from peer.client import Client, ErroPreparacao, abrir_socket, ler_match_start
 
 MATCH_START = {
     "v": 1, "t": "MATCH_START", "match_id": "m7", "host_slot": 0,
@@ -24,6 +24,14 @@ def com(alteracao):
     ms = copy.deepcopy(MATCH_START)
     alteracao(ms)
     return ms
+
+
+def porta_livre():
+    tmp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    tmp.bind(("127.0.0.1", 0))
+    porta = tmp.getsockname()[1]
+    tmp.close()
+    return porta
 
 
 class TestLerMatchStart(unittest.TestCase):
@@ -83,11 +91,7 @@ class TestLerMatchStart(unittest.TestCase):
 
 class TestSocket(unittest.TestCase):
     def test_bind_na_porta_pedida(self):
-        # descobre uma porta livre, libera e pede ao abrir_socket
-        tmp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        tmp.bind(("127.0.0.1", 0))
-        porta = tmp.getsockname()[1]
-        tmp.close()
+        porta = porta_livre()
         sock = abrir_socket("127.0.0.1", porta)
         try:
             self.assertEqual(sock.getsockname(), ("127.0.0.1", porta))
@@ -117,6 +121,44 @@ class TestSocket(unittest.TestCase):
         finally:
             sock.close()
             recv.close()
+
+
+class TestClasseClient(unittest.TestCase):
+    CFG = {"peer": {"bind_host": "127.0.0.1"}}
+
+    def test_assinatura_do_main(self):
+        """O main chama Client(cfg, match_start, meu_pid)."""
+        c = Client(self.CFG, MATCH_START, 1)
+        self.assertEqual(c.match_id, "m7")
+        self.assertEqual(c.meu_pid, 1)
+        self.assertEqual(c.host_addr, ("192.168.0.21", 6001))
+        self.assertIsNone(c.ui)
+        self.assertIsNone(c.sock)
+
+    def test_aceita_ui_opcional(self):
+        ui = object()
+        c = Client(self.CFG, MATCH_START, 1, ui=ui)
+        self.assertIs(c.ui, ui)
+
+    def test_match_start_ruim_falha_na_criacao(self):
+        with self.assertRaises(ErroPreparacao):
+            Client(self.CFG, MATCH_START, 0)   # slot 0 e o host
+
+    def test_abrir_usa_a_porta_registrada_e_bind_host_da_config(self):
+        porta = porta_livre()
+        ms = com(lambda m: m["players"][1].update(host="127.0.0.1", port=porta))
+        c = Client(self.CFG, ms, 1)
+        try:
+            c.abrir()
+            self.assertEqual(c.sock.getsockname(), ("127.0.0.1", porta))
+        finally:
+            c.fechar()
+        self.assertIsNone(c.sock)
+
+    def test_run_ainda_vazio(self):
+        c = Client(self.CFG, MATCH_START, 1)
+        with self.assertRaises(NotImplementedError):
+            c.run()
 
 
 if __name__ == "__main__":
