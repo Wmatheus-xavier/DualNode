@@ -1,12 +1,14 @@
 """peer/client.py - jogador comum (peer != host).
 
-NOTA (estado atual): este arquivo contem as PARTES 1, 2 e 3:
+NOTA (estado atual): este arquivo contem as PARTES 1, 2, 3 e 4:
   1) preparacao (ler o MATCH_START) e socket UDP unico;
   2) enviar e receber mensagens, com filtro e validacao dos datagramas;
-  3) handshake: HELLO com reenvio ate chegar o WELCOME.
+  3) handshake: HELLO com reenvio ate chegar o WELCOME;
+  4) estado inicial e tela: GameView a partir do WELCOME, TerminalUI e a
+     espera pelo inicio da partida (primeiro TICK com registros).
 O metodo Client.run() ainda esta VAZIO: apenas levanta NotImplementedError.
 Se alguem iniciar uma partida como peer com esta versao, o main.py vai falhar
-nessa chamada. As proximas partes (estado e tela, INPUT, TICK, falhas) serao
+nessa chamada. As proximas partes (INPUT, TICK em ordem, falhas e fim) serao
 adicionadas aqui, uma de cada vez.
 
 Como o main.py usa esta classe (main.py, funcao jogar):
@@ -30,6 +32,7 @@ JANELA = 8                                   # max. de registros por TICK (READM
 DIRECOES = ("U", "D", "L", "R")
 MOTIVOS = ("WALL", "TRAIL", "HEAD", "DISC")  # motivos de eliminacao validos
 TIPOS_DO_HOST = ("WELCOME", "TICK", "ABORT")  # unicos tipos que um peer aceita
+PASSO_ESPERA = 0.05                          # s entre leituras de teclado/rede nas esperas
 
 
 class ErroPreparacao(Exception):
@@ -224,6 +227,17 @@ def validar_recs(recs):
 
 
 # ===================================================================
+# PARTE 4: tela
+# ===================================================================
+
+def _criar_tela():
+    """Cria a TerminalUI (curses). Import tardio: so quem joga precisa de
+    curses, e os testes podem trocar esta funcao por uma tela falsa."""
+    from peer.ui import TerminalUI
+    return TerminalUI()
+
+
+# ===================================================================
 # Classe Client
 # ===================================================================
 
@@ -259,6 +273,9 @@ class Client:
         self.tick_ms = self.config.get("tick_ms", 100) if isinstance(self.config, dict) else 100
         self.dir_desejada = None       # direcao inicial da minha moto
         self.tentativas_hello = 0
+        # Parte 4
+        self.view = None               # GameView (copia local do estado, so p/ desenhar)
+        self._tela_propria = None      # TerminalUI aberta por este Client (se o main nao passou ui)
 
     # ---------- Parte 1: socket ----------
 
@@ -430,6 +447,86 @@ class Client:
             if jogador["pid"] == self.meu_pid:
                 self.dir_desejada = jogador["dir"]
 
+    # ---------- Parte 4: estado inicial e tela ----------
+
+    def host_timeout_s(self):
+        """Tempo sem TICK do host que o torna 'perdido' (timeouts.host_timeout_ms,
+        padrao 3000 ms)."""
+        t = self.cfg.get("timeouts") or {}
+        return max(t.get("host_timeout_ms", 3000) / 1000.0, 0.001)
+
+    def montar_view(self):
+        """Cria o GameView a partir do WELCOME (exige o handshake feito)."""
+        if self.state is None:
+            raise RuntimeError("montar_view() exige o handshake feito (sem WELCOME)")
+        from peer.ui import GameView
+        nomes = {pid: jogador["name"] for pid, jogador in self.players.items()}
+        self.view = GameView(self.meu_pid, nomes)
+        self.view.load_welcome(self.state)
+        return self.view
+
+    def abrir_tela(self):
+        """Devolve a ui a usar. Se o main passou uma, usa essa (e o main cuida
+        de fecha-la e do wait_key). Se nao, abre a propria TerminalUI, que
+        deve ser fechada com fechar_tela()."""
+        if self.ui is None:
+            tela = _criar_tela()
+            self.ui = tela.__enter__()
+            self._tela_propria = tela
+        return self.ui
+
+    def fechar_tela(self):
+        """Fecha so a tela que este Client abriu (nunca a que veio do main)."""
+        if self._tela_propria is not None:
+            tela, self._tela_propria = self._tela_propria, None
+            self.ui = None
+            tela.__exit__(None, None, None)
+
+    def aguardar_inicio(self):
+        """Mostra a arena e espera a partida comecar (READY -> PLAYING).
+
+        A partida comeca no primeiro TICK que traz registros. Antes disso o
+        host manda TICK vazio (sinal de vida) enquanto espera os outros
+        jogadores e durante a contagem; nao da para distinguir uma coisa da
+        outra, entao a tela mostra apenas uma mensagem de espera.
+
+        Durante a espera, as teclas de direcao ja atualizam dir_desejada.
+        O primeiro TICK com registros NAO e aplicado aqui: vai no retorno,
+        para a Parte 6 aplicar em ordem.
+
+        Devolve:
+          {"ok": True,  "tick": <mensagem TICK com recs>}
+          {"ok": False, "motivo": "ABORT", "reason": <texto>}
+          {"ok": False, "motivo": "QUIT"}          (jogador apertou Q)
+          {"ok": False, "motivo": "HOST_LOST"}     (sem TICK por host_timeout_ms)
+        """
+        if self.ui is None:
+            raise RuntimeError("aguardar_inicio() exige a tela aberta (abrir_tela())")
+        view = self.view or self.montar_view()
+        view.status = "Conectado! Aguardando o inicio da partida...  (Q: sair)"
+        limite = self.host_timeout_s()
+        ultimo_tick = self.t_welcome if self.t_welcome is not None else time.monotonic()
+        while True:
+            self.ui.draw(view)
+            tecla = self.ui.poll_input()
+            if tecla == "QUIT":
+                return {"ok": False, "motivo": "QUIT"}
+            if tecla in DIRECOES:
+                self.dir_desejada = tecla
+            msg = self.receber(PASSO_ESPERA)
+            agora = time.monotonic()
+            if msg is not None:
+                if msg["t"] == "ABORT":
+                    return {"ok": False, "motivo": "ABORT", "reason": msg["reason"]}
+                if msg["t"] == "TICK":
+                    ultimo_tick = agora
+                    if msg["recs"]:
+                        return {"ok": True, "tick": msg}
+                # WELCOME repetido (resposta a um HELLO reenviado): ignorar
+            if agora - ultimo_tick > limite:
+                log.warning("sem TICK do host por %.1f s antes do inicio", limite)
+                return {"ok": False, "motivo": "HOST_LOST"}
+
     def run(self):
-        """VAZIO por enquanto (Partes 1 a 3). Sera preenchido nas proximas."""
+        """VAZIO por enquanto (Partes 1 a 4). Sera preenchido nas proximas."""
         raise NotImplementedError("Client.run() ainda nao foi implementado")
