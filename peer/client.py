@@ -1,14 +1,15 @@
 """peer/client.py - jogador comum (peer != host).
 
-NOTA (estado atual): este arquivo contem as PARTES 1, 2, 3 e 4:
+NOTA (estado atual): este arquivo contem as PARTES 1, 2, 3, 4 e 5:
   1) preparacao (ler o MATCH_START) e socket UDP unico;
   2) enviar e receber mensagens, com filtro e validacao dos datagramas;
   3) handshake: HELLO com reenvio ate chegar o WELCOME;
   4) estado inicial e tela: GameView a partir do WELCOME, TerminalUI e a
-     espera pelo inicio da partida (primeiro TICK com registros).
+     espera pelo inicio da partida (primeiro TICK com registros);
+  5) INPUT a cada ciclo: iseq crescente (a partir de 1), direcao desejada e ack.
 O metodo Client.run() ainda esta VAZIO: apenas levanta NotImplementedError.
 Se alguem iniciar uma partida como peer com esta versao, o main.py vai falhar
-nessa chamada. As proximas partes (INPUT, TICK em ordem, falhas e fim) serao
+nessa chamada. As proximas partes (TICK em ordem, falhas e fim) serao
 adicionadas aqui, uma de cada vez.
 
 Como o main.py usa esta classe (main.py, funcao jogar):
@@ -33,6 +34,7 @@ DIRECOES = ("U", "D", "L", "R")
 MOTIVOS = ("WALL", "TRAIL", "HEAD", "DISC")  # motivos de eliminacao validos
 TIPOS_DO_HOST = ("WELCOME", "TICK", "ABORT")  # unicos tipos que um peer aceita
 PASSO_ESPERA = 0.05                          # s entre leituras de teclado/rede nas esperas
+TOLERANCIA_ATRASO = 5                        # ciclos de atraso a partir dos quais o relogio e reajustado
 
 
 class ErroPreparacao(Exception):
@@ -227,6 +229,24 @@ def validar_recs(recs):
 
 
 # ===================================================================
+# PARTE 5: ritmo do INPUT
+# ===================================================================
+
+def proximo_instante(proximo, agora, tick_s):
+    """Quando enviar o proximo INPUT.
+
+    Soma o tick ao instante que estava PREVISTO (nao ao de agora), para que
+    pequenos atrasos nao se acumulem. Se o atraso passar de TOLERANCIA_ATRASO
+    ciclos, desiste de recuperar e recomeca a contar de agora (nao ha rajada
+    de INPUTs). Mesma regra do host (peer/host.py, _proximo_instante).
+    """
+    proximo += tick_s
+    if agora - proximo > TOLERANCIA_ATRASO * tick_s:
+        proximo = agora + tick_s
+    return proximo
+
+
+# ===================================================================
 # PARTE 4: tela
 # ===================================================================
 
@@ -276,6 +296,10 @@ class Client:
         # Parte 4
         self.view = None               # GameView (copia local do estado, so p/ desenhar)
         self._tela_propria = None      # TerminalUI aberta por este Client (se o main nao passou ui)
+        # Parte 5
+        self.iseq = 0                  # numero do ultimo INPUT enviado (o 1o sera 1; o host rejeita iseq <= 0)
+        self.ack = 0                   # ultimo ciclo (n) aplicado; a Parte 6 atualiza. 0 = nenhum
+        self._prox_input = None        # instante previsto do proximo INPUT (time.monotonic)
 
     # ---------- Parte 1: socket ----------
 
@@ -447,6 +471,54 @@ class Client:
             if jogador["pid"] == self.meu_pid:
                 self.dir_desejada = jogador["dir"]
 
+    # ---------- Parte 5: INPUT a cada ciclo ----------
+
+    def ler_teclado(self):
+        """Le o teclado sem bloquear (ui.poll_input) e guarda a direcao pedida.
+
+        Devolve "QUIT" se o jogador apertou Q, senao None. Uma direcao so
+        troca dir_desejada; quem a envia e enviar_input(). Direcao oposta a que a moto
+        segue tambem e guardada: o host a ignora (README, secao 8).
+        """
+        tecla = self.ui.poll_input()
+        if tecla == "QUIT":
+            return "QUIT"
+        if tecla in DIRECOES:
+            self.dir_desejada = tecla
+        return None
+
+    def enviar_input(self):
+        """Envia UM INPUT com a direcao desejada e o ack atual.
+
+        O INPUT e estado ("a direcao desejada e X"), por isso e enviado todo
+        ciclo mesmo sem tecla nova: a perda de um e compensada pelo seguinte.
+        O iseq cresce a cada envio (o host descarta iseq repetido ou antigo).
+        Devolve True se enviou; False se ainda nao ha direcao desejada ou o
+        envio falhou.
+        """
+        if self.dir_desejada is None:
+            log.debug("INPUT nao enviado: ainda sem direcao desejada")
+            return False
+        self.iseq += 1
+        return self.enviar(proto.input_msg(self.match_id, self.meu_pid, self.iseq,
+                                           self.dir_desejada, self.ack))
+
+    def enviar_input_se_for_hora(self, agora=None):
+        """Chame a cada volta do laco: envia um INPUT a cada tick_ms.
+
+        O primeiro sai na hora; os seguintes a cada tick_ms, sem acumular
+        atraso (ver proximo_instante). 'agora' existe para testar com um
+        relogio falso. Devolve True se um INPUT foi enviado nesta chamada.
+        """
+        agora = time.monotonic() if agora is None else agora
+        if self._prox_input is None:
+            self._prox_input = agora
+        if agora < self._prox_input:
+            return False
+        enviado = self.enviar_input()
+        self._prox_input = proximo_instante(self._prox_input, agora, self.tick_ms / 1000.0)
+        return enviado
+
     # ---------- Parte 4: estado inicial e tela ----------
 
     def host_timeout_s(self):
@@ -490,7 +562,8 @@ class Client:
         jogadores e durante a contagem; nao da para distinguir uma coisa da
         outra, entao a tela mostra apenas uma mensagem de espera.
 
-        Durante a espera, as teclas de direcao ja atualizam dir_desejada.
+        Durante a espera, as teclas de direcao ja atualizam dir_desejada e o
+        INPUT ja e enviado a cada tick_ms (sinal de vida, README secao 10).
         O primeiro TICK com registros NAO e aplicado aqui: vai no retorno,
         para a Parte 6 aplicar em ordem.
 
@@ -508,11 +581,9 @@ class Client:
         ultimo_tick = self.t_welcome if self.t_welcome is not None else time.monotonic()
         while True:
             self.ui.draw(view)
-            tecla = self.ui.poll_input()
-            if tecla == "QUIT":
+            if self.ler_teclado() == "QUIT":
                 return {"ok": False, "motivo": "QUIT"}
-            if tecla in DIRECOES:
-                self.dir_desejada = tecla
+            self.enviar_input_se_for_hora()      # sinal de vida desde o WELCOME (Parte 5)
             msg = self.receber(PASSO_ESPERA)
             agora = time.monotonic()
             if msg is not None:
@@ -528,5 +599,5 @@ class Client:
                 return {"ok": False, "motivo": "HOST_LOST"}
 
     def run(self):
-        """VAZIO por enquanto (Partes 1 a 4). Sera preenchido nas proximas."""
+        """VAZIO por enquanto (Partes 1 a 5). Sera preenchido nas proximas."""
         raise NotImplementedError("Client.run() ainda nao foi implementado")
