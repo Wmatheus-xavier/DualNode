@@ -155,10 +155,10 @@ class TestClasseClient(unittest.TestCase):
             c.fechar()
         self.assertIsNone(c.sock)
 
-    def test_run_ainda_vazio(self):
-        c = Client(self.CFG, MATCH_START, 1)
-        with self.assertRaises(NotImplementedError):
-            c.run()
+    def test_run_existe_e_o_main_pode_chama_lo(self):
+        """O main faz Client(cfg, match_start, meu_pid).run(); o run() completo
+        e testado a fundo em test_client_parte7."""
+        self.assertTrue(callable(Client(self.CFG, MATCH_START, 1).run))
 
 
 if __name__ == "__main__":
