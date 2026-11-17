@@ -1,25 +1,22 @@
 """peer/client.py - jogador comum (peer != host).
 
-NOTA (estado atual): este arquivo contem as PARTES 1, 2, 3, 4, 5 e 6:
-  1) preparacao (ler o MATCH_START) e socket UDP unico;
-  2) enviar e receber mensagens, com filtro e validacao dos datagramas;
-  3) handshake: HELLO com reenvio ate chegar o WELCOME;
-  4) estado inicial e tela: GameView a partir do WELCOME, TerminalUI e a
-     espera pelo inicio da partida (primeiro TICK com registros);
-  5) INPUT a cada ciclo: iseq crescente (a partir de 1), direcao desejada e ack;
-  6) aplicar o TICK em ordem (registro n = ultimo + 1), atualizar o ack e
-     redesenhar: aplicar_tick() e o laco rodar_partida().
-O metodo Client.run() ainda esta VAZIO: apenas levanta NotImplementedError.
-Se alguem iniciar uma partida como peer com esta versao, o main.py vai falhar
-nessa chamada. A proxima parte (falhas e fim confiavel, e o run()) sera
-adicionadas aqui, uma de cada vez.
-
 Como o main.py usa esta classe (main.py, funcao jogar):
     resultado = Client(cfg, match_start, meu_pid).run()
     - meu_pid e o slot do jogador (lobby.slot).
-    - run() deve devolver um dict com "result" ("WIN", "DRAW", "HOST_LOST" ou
-      outro valor, que o main trata como partida encerrada) e, se houver,
-      "winner".
+    - run() devolve um dict {"result": ..., "winner": ...}:
+        "WIN" / "DRAW"   a partida terminou (winner = pid do vencedor ou None)
+        "HOST_LOST"      o host parou de mandar TICK
+        "ABORT"          o host abortou, ou nao respondeu ao HELLO (ha "reason")
+        "QUIT"           o jogador saiu com Q
+
+Construido em partes, cada uma com teste proprio (tests/test_client_parteN.py):
+  1) preparacao: ler o MATCH_START e abrir o socket UDP unico;
+  2) enviar e receber mensagens, com filtro e validacao dos datagramas;
+  3) handshake: HELLO com reenvio ate chegar o WELCOME;
+  4) estado inicial e tela: GameView, TerminalUI e espera pelo inicio;
+  5) INPUT a cada ciclo: iseq crescente (a partir de 1), direcao e ack;
+  6) aplicar o TICK em ordem (registro n = ultimo + 1) e redesenhar;
+  7) fim confiavel (INPUT com o ack final) e o run() que junta tudo.
 """
 
 import ipaddress
@@ -37,6 +34,7 @@ MOTIVOS = ("WALL", "TRAIL", "HEAD", "DISC")  # motivos de eliminacao validos
 TIPOS_DO_HOST = ("WELCOME", "TICK", "ABORT")  # unicos tipos que um peer aceita
 PASSO_ESPERA = 0.05                          # s entre leituras de teclado/rede nas esperas
 TOLERANCIA_ATRASO = 5                        # ciclos de atraso a partir dos quais o relogio e reajustado
+FIM_DURACAO_S = 2.0                          # quanto tempo seguir mandando o ack final depois do fim
 
 
 class ErroPreparacao(Exception):
@@ -304,6 +302,8 @@ class Client:
         self._prox_input = None        # instante previsto do proximo INPUT (time.monotonic)
         # Parte 6
         self._ultimo_tick = None       # time.monotonic() do ultimo TICK valido (qualquer um)
+        # Parte 7
+        self.fim_duracao_s = FIM_DURACAO_S
 
     # ---------- Parte 1: socket ----------
 
@@ -704,6 +704,96 @@ class Client:
                 log.warning("sem TICK do host por %.1f s antes do inicio", limite)
                 return {"ok": False, "motivo": "HOST_LOST"}
 
+    # ---------- Parte 7: fim confiavel e run() ----------
+
+    def confirmar_fim(self, duracao_s=None):
+        """Depois de ver o fim, segue mandando INPUT com o ack FINAL por
+        duracao_s (padrao fim_duracao_s, ~2 s; README, secao 11).
+
+        Por que: o host so encerra (estado ENDING) quando todos os peers
+        confirmam o ultimo ciclo, e nao existe resposta do host a esse ack. Um
+        unico INPUT pode se perder; varios, um por ciclo, garantem que chega.
+        Durante a espera, o que o host reenviar (TICK, WELCOME) e ignorado e a
+        tela continua desenhada com o resultado.
+        """
+        duracao = self.fim_duracao_s if duracao_s is None else duracao_s
+        limite = time.monotonic() + duracao
+        self._prox_input = None                  # o primeiro INPUT sai na hora
+        while time.monotonic() < limite:
+            if self.ui is not None and self.view is not None:
+                self.ui.draw(self.view)
+            self.enviar_input_se_for_hora()
+            espera = PASSO_ESPERA
+            if self._prox_input is not None:
+                espera = max(min(PASSO_ESPERA, self._prox_input - time.monotonic()), 0.0)
+            espera = min(espera, max(limite - time.monotonic(), 0.0))
+            while self.receber(espera) is not None:
+                espera = 0.0                     # esvazia a fila e descarta
+
+    def _resultado(self, r):
+        """Converte o retorno de aguardar_inicio/rodar_partida/handshake no
+        dict que o main.py espera: {"result": ..., "winner": ...}."""
+        if r.get("ok"):
+            fim = r["fim"]
+            return {"result": fim["result"], "winner": fim.get("winner")}
+        motivo = r.get("motivo")
+        if motivo == "HOST_LOST":
+            return {"result": "HOST_LOST", "winner": None}
+        if motivo == "QUIT":
+            return {"result": "QUIT", "winner": None}
+        if motivo == "DEADLINE":
+            razao = "o host nao respondeu ao HELLO"
+        else:
+            razao = r.get("reason") or "partida abortada"
+        return {"result": "ABORT", "winner": None, "reason": razao}
+
+    def _mostrar_final(self, r):
+        """Deixa na ultima linha da tela o motivo do fim (se nao foi uma vitoria/empate)."""
+        if self.ui is None or self.view is None or r.get("ok"):
+            return
+        motivo = r.get("motivo")
+        if motivo == "HOST_LOST":
+            self.view.status = "O host parou de responder. Partida encerrada.  (pressione qualquer tecla)"
+        elif motivo == "ABORT":
+            self.view.status = "Partida encerrada pelo host (%s).  (pressione qualquer tecla)" % r.get("reason")
+        else:
+            return
+        self.ui.draw(self.view)
+
     def run(self):
-        """VAZIO por enquanto (Partes 1 a 6). Sera preenchido nas proximas."""
-        raise NotImplementedError("Client.run() ainda nao foi implementado")
+        """Joga a partida inteira como peer e devolve {"result", "winner"}.
+
+        Ordem: abrir socket -> handshake -> tela -> esperar inicio -> jogar ->
+        confirmar o fim. Sempre fecha o socket e (so se foi este Client que a
+        abriu) a tela, mesmo com erro ou Ctrl+C: o terminal volta ao normal.
+        Se a ui veio do main, o main cuida do wait_key; se o Client abriu a
+        propria tela, ele espera uma tecla no fim (menos quando o jogador saiu com Q).
+        """
+        try:
+            self.abrir()
+        except ErroPreparacao as e:
+            log.error("nao foi possivel preparar o peer: %s", e)
+            return {"result": "ABORT", "winner": None, "reason": str(e)}
+        try:
+            hs = self.handshake()
+            if not hs["ok"]:
+                return self._resultado(hs)
+            self.abrir_tela()
+            self.montar_view()
+            r = self.aguardar_inicio()
+            if r["ok"]:
+                r = self.rodar_partida(tick_inicial=r["tick"])
+            if r["ok"]:
+                self.confirmar_fim()
+            self._mostrar_final(r)
+            if self._tela_propria is not None and r.get("motivo") != "QUIT":
+                self.ui.wait_key()
+            resultado = self._resultado(r)
+            log.info("partida terminou para o peer %s: %s", self.meu_pid, resultado)
+            return resultado
+        except KeyboardInterrupt:
+            log.warning("peer interrompido (Ctrl+C)")
+            return {"result": "ABORT", "winner": None, "reason": "interrompido (Ctrl+C)"}
+        finally:
+            self.fechar_tela()
+            self.fechar()
