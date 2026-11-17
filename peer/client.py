@@ -1,15 +1,17 @@
 """peer/client.py - jogador comum (peer != host).
 
-NOTA (estado atual): este arquivo contem as PARTES 1, 2, 3, 4 e 5:
+NOTA (estado atual): este arquivo contem as PARTES 1, 2, 3, 4, 5 e 6:
   1) preparacao (ler o MATCH_START) e socket UDP unico;
   2) enviar e receber mensagens, com filtro e validacao dos datagramas;
   3) handshake: HELLO com reenvio ate chegar o WELCOME;
   4) estado inicial e tela: GameView a partir do WELCOME, TerminalUI e a
      espera pelo inicio da partida (primeiro TICK com registros);
-  5) INPUT a cada ciclo: iseq crescente (a partir de 1), direcao desejada e ack.
+  5) INPUT a cada ciclo: iseq crescente (a partir de 1), direcao desejada e ack;
+  6) aplicar o TICK em ordem (registro n = ultimo + 1), atualizar o ack e
+     redesenhar: aplicar_tick() e o laco rodar_partida().
 O metodo Client.run() ainda esta VAZIO: apenas levanta NotImplementedError.
 Se alguem iniciar uma partida como peer com esta versao, o main.py vai falhar
-nessa chamada. As proximas partes (TICK em ordem, falhas e fim) serao
+nessa chamada. A proxima parte (falhas e fim confiavel, e o run()) sera
 adicionadas aqui, uma de cada vez.
 
 Como o main.py usa esta classe (main.py, funcao jogar):
@@ -300,6 +302,8 @@ class Client:
         self.iseq = 0                  # numero do ultimo INPUT enviado (o 1o sera 1; o host rejeita iseq <= 0)
         self.ack = 0                   # ultimo ciclo (n) aplicado; a Parte 6 atualiza. 0 = nenhum
         self._prox_input = None        # instante previsto do proximo INPUT (time.monotonic)
+        # Parte 6
+        self._ultimo_tick = None       # time.monotonic() do ultimo TICK valido (qualquer um)
 
     # ---------- Parte 1: socket ----------
 
@@ -471,6 +475,108 @@ class Client:
             if jogador["pid"] == self.meu_pid:
                 self.dir_desejada = jogador["dir"]
 
+    # ---------- Parte 6: aplicar o TICK em ordem ----------
+
+    def aplicar_tick(self, msg):
+        """Aplica na tela os registros novos de um TICK, SEMPRE em ordem.
+
+        Regra (README, secao 11): so vale o registro n = ack + 1.
+          - n <= ack  : ja aplicado (o host reenvia a janela inteira); pula;
+          - n == ack+1: aplica no GameView e sobe o ack;
+          - n >  ack+1: falta um registro no meio; nao aplica nada daqui em
+            diante. O proximo INPUT leva o ack atual e o host reenvia o que falta.
+        Depois do registro com 'end', nada mais e aplicado.
+        Devolve quantos registros foram aplicados.
+        """
+        if self.view is None:
+            self.montar_view()
+        if self.view.result is not None:
+            return 0
+        recs = msg["recs"]
+        aplicados = 0
+        for rec in recs:
+            n = rec["n"]
+            if n <= self.ack:
+                continue
+            if n != self.ack + 1:
+                break
+            self.view.apply_record(rec)
+            self.ack = n
+            aplicados += 1
+            if self.view.result is not None:
+                break
+        if recs and aplicados == 0:
+            if recs[-1]["n"] <= self.ack:
+                self._descartar("tick_repetido")
+            else:
+                self._descartar("tick_com_buraco", "(ack=%d, recebi n=%d..%d)"
+                                % (self.ack, recs[0]["n"], recs[-1]["n"]))
+        return aplicados
+
+    def _processar(self, msg):
+        """Trata UMA mensagem valida do host durante a partida.
+        Devolve um dict de saida (ABORT) ou None para continuar."""
+        if msg["t"] == "ABORT":
+            log.warning("ABORT do host: %s", msg["reason"])
+            return {"ok": False, "motivo": "ABORT", "reason": msg["reason"]}
+        if msg["t"] == "TICK":
+            self._ultimo_tick = time.monotonic()     # qualquer TICK e sinal de vida
+            self.aplicar_tick(msg)
+        # WELCOME repetido (resposta a um HELLO reenviado): ignorar
+        return None
+
+    def _atualizar_status(self):
+        """Texto da ultima linha da tela durante a partida."""
+        if self.view.alive.get(self.meu_pid, True):
+            self.view.status = ""
+        else:
+            self.view.status = "Voce foi eliminado. Assistindo ate o fim...  (Q: sair)"
+
+    def rodar_partida(self, tick_inicial=None):
+        """Laco principal da partida (estado PLAYING / SPECTATING).
+
+        A cada volta: desenha, le o teclado, envia o INPUT se for a hora e
+        aplica os TICKs que chegaram (todos os que ja estao na fila, para
+        recuperar rapido depois de uma pausa).
+
+        tick_inicial: o TICK devolvido por aguardar_inicio(), ainda nao
+        aplicado. Quem foi eliminado continua no laco (assistindo): segue
+        aplicando TICK e mandando INPUT ate o fim.
+
+        Devolve:
+          {"ok": True,  "fim": {"result": "WIN"/"DRAW", ["winner": pid]}}
+          {"ok": False, "motivo": "ABORT", "reason": <texto>}
+          {"ok": False, "motivo": "QUIT"}        (jogador apertou Q)
+          {"ok": False, "motivo": "HOST_LOST"}   (sem TICK por host_timeout_ms)
+        """
+        if self.ui is None:
+            raise RuntimeError("rodar_partida() exige a tela aberta (abrir_tela())")
+        view = self.view or self.montar_view()
+        limite = self.host_timeout_s()
+        self._ultimo_tick = time.monotonic()
+        if tick_inicial is not None:
+            self.aplicar_tick(tick_inicial)
+        while True:
+            self._atualizar_status()
+            self.ui.draw(view)
+            if view.result is not None:
+                return {"ok": True, "fim": view.result}
+            if self.ler_teclado() == "QUIT":
+                return {"ok": False, "motivo": "QUIT"}
+            self.enviar_input_se_for_hora()
+            espera = PASSO_ESPERA
+            if self._prox_input is not None:
+                espera = max(min(PASSO_ESPERA, self._prox_input - time.monotonic()), 0.0)
+            msg = self.receber(espera)
+            while msg is not None:
+                saida = self._processar(msg)
+                if saida is not None:
+                    return saida
+                msg = self.receber(0)
+            if time.monotonic() - self._ultimo_tick > limite:
+                log.warning("sem TICK do host por %.1f s durante a partida", limite)
+                return {"ok": False, "motivo": "HOST_LOST"}
+
     # ---------- Parte 5: INPUT a cada ciclo ----------
 
     def ler_teclado(self):
@@ -599,5 +705,5 @@ class Client:
                 return {"ok": False, "motivo": "HOST_LOST"}
 
     def run(self):
-        """VAZIO por enquanto (Partes 1 a 5). Sera preenchido nas proximas."""
+        """VAZIO por enquanto (Partes 1 a 6). Sera preenchido nas proximas."""
         raise NotImplementedError("Client.run() ainda nao foi implementado")
