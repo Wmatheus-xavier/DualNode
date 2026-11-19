@@ -1,0 +1,31 @@
+{
+  "v": 1,
+  "t": "MATCH_START",
+  "match_id": "m1",
+  "host_slot": 0,
+  "config": {
+    "width": 40,
+    "height": 20,
+    "tick_ms": 100
+  },
+  "players": [
+    {
+      "slot": 0,
+      "name": "Alice",
+      "host": "192.168.1.76",
+      "port": 6001
+    },
+    {
+      "slot": 1,
+      "name": "Bob",
+      "host": "192.168.1.76",
+      "port": 6002
+    },
+    {
+      "slot": 2,
+      "name": "Carol",
+      "host": "192.168.1.76",
+      "port": 6003
+    }
+  ]
+}
