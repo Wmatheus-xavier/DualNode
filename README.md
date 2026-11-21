@@ -89,7 +89,7 @@ sequenceDiagram
     Note over L: lobby pode cair aqui sem afetar a partida
 ```
 
-Depois do `MATCH_START`, **nenhuma mensagem de jogo passa pelo lobby**. Como o processo do jogador cuida da partida em um único laço e não atende o TCP durante ela, o jogador **fecha a conexão com o lobby logo depois do `MATCH_START`**, e o lobby trata o fechamento de quem está em partida como normal (seção 11). `[CONFERIR com lobby e main.py]`. Se o lobby cair antes ou durante a partida, a partida em andamento não é afetada.
+Depois do `MATCH_START`, **nenhuma mensagem de jogo passa pelo lobby**. Como o processo do jogador cuida da partida em um único laço e não atende o TCP durante ela, o lobby **não envia `PING` a quem está em partida** (estado `IN_GAME`). A conexão continua aberta: no fim, o host avisa com `MATCH_END` e os demais voltam ao menu com o primeiro pedido (seção 11). Se o lobby cair antes ou durante a partida, a partida em andamento não é afetada.
 
 ## 3. Estrutura do projeto
 
@@ -114,6 +114,7 @@ DualNode/
 │   ├── game_logic.py      # regras do jogo (ciclo determinístico)
 │   ├── config.py          # leitura de configuração
 │   └── simnet.py          # simulador de perda/atraso (só para testes)
+├── tests/                 # testes automáticos (unittest)
 ├── testes_manuais/        # scripts de teste e de cenários (seção 16)
 ├── docs/
 ├── logs/                  # gerado em execução
@@ -138,18 +139,19 @@ pip install -r requirements.txt    # [AJUSTAR] (pode conter apenas windows-curse
 
 ## 5. Configuração
 
-Endereços e portas **não ficam no código**: vêm de um arquivo JSON e podem ser sobrescritos por argumentos de linha de comando.
+Endereços e portas **não ficam no código**: vêm de um arquivo `config.json` na raiz do projeto e podem ser sobrescritos pela linha de comando. A prioridade é **linha de comando > `config.json` > valores padrão**; se não existir `config.json`, valem os padrões. Uma chave desconhecida ou um valor inválido é rejeitado com uma mensagem clara (isso pega erro de digitação).
 
-`config.example.json`:
+`config.example.json` (já com os valores padrão):
 
 ```json
 {
   "lobby": {
-    "host": "192.168.0.10",
+    "host": "127.0.0.1",
     "port": 5000,
     "game": { "width": 40, "height": 20, "tick_ms": 100 }
   },
   "peer": {
+    "name": null,
     "bind_host": "0.0.0.0",
     "advertise_host": null,
     "udp_port": 6001
@@ -161,52 +163,120 @@ Endereços e portas **não ficam no código**: vêm de um arquivo JSON e podem s
     "hello_deadline_ms": 10000,
     "lobby_ping_ms": 5000,
     "lobby_dead_ms": 15000
-  }
+  },
+  "debug": { "sim_loss": 0.0, "sim_delay_ms": 0, "log_level": "INFO" }
 }
 ```
 
-| Parâmetro | Descrição |
-|-----------|-----------|
-| `lobby.host` / `lobby.port` | Onde o lobby escuta (lobby) ou onde os jogadores o encontram (peer). |
-| `lobby.game.*` | Arena e velocidade. **Definidos pelo lobby** e entregues a todos no `MATCH_START`, garantindo que todos usem os mesmos valores. |
-| `peer.bind_host` | Interface em que o jogador escuta UDP. |
-| `peer.advertise_host` | IP que o jogador informa aos outros. Se `null`, o lobby usa o IP de origem da conexão TCP. |
-| `peer.udp_port` | Porta UDP do jogador. |
-| `timeouts.*` | Prazos de detecção de falha (ver [seção 15](#15-tolerância-a-falhas)). |
-| `sim` (opcional) | Só para testes: `{"loss": 0.2, "delay_ms": 80, "jitter_ms": 40, "seed": 7}` simula perda, atraso e jitter nos dois sentidos no socket do host. Não deve constar na configuração normal. |
+| Chave | Opção da linha de comando | Descrição | Padrão |
+|-------|---------------------------|-----------|--------|
+| `lobby.host` | `--lobby-host` (ou `--host`) | Onde os jogadores encontram o lobby. No próprio lobby, define a interface em que ele escuta (sem a opção, escuta em todas) | `127.0.0.1` |
+| `lobby.port` | `--lobby-port` (ou `--port`) | Porta TCP do lobby | `5000` |
+| `lobby.game.*` | (só no `config.json`) | Largura, altura e `tick_ms` da arena. **Definidos pelo lobby** e entregues a todos no `MATCH_START`, para que todos usem valores idênticos | `40`, `20`, `100` |
+| `peer.name` | `--name` | Nome do jogador: 1 a 16 caracteres `[A-Za-z0-9_-]`, único no lobby | `Jogador` |
+| `peer.bind_host` | `--bind-host` | Interface em que o jogador escuta o UDP | `0.0.0.0` |
+| `peer.advertise_host` | `--advertise-host` | IP que o jogador informa aos outros. Se vazio, o lobby usa o IP de origem da conexão TCP | vazio |
+| `peer.udp_port` | `--udp-port` | Porta UDP do jogador (1024 a 65535). **Cada jogador precisa de uma porta diferente** quando estão na mesma máquina | `6001` |
+| `timeouts.*` | (só no `config.json`) | Prazos de detecção de falha (ver [seção 15](#15-tolerância-a-falhas)) | tabela acima |
+| `debug.sim_loss` | `--sim-loss` | Só para testes: perda de datagramas simulada (0 a 1), nos dois sentidos, no host | `0` |
+| `debug.sim_delay_ms` | `--sim-delay-ms` | Só para testes: atraso simulado em cada sentido, no host | `0` |
+| `debug.log_level` | `--log-level` | Nível de log (`DEBUG`, `INFO`, ...) | `INFO` |
 
-O host lê da configuração exatamente estas chaves: `peer.bind_host`, `timeouts.hello_deadline_ms`, `timeouts.peer_timeout_ms` e, opcionalmente, `sim`. O campo `config` da mensagem `MATCH_START` (largura, altura e `tick_ms`) é outra coisa: descreve a arena.
+O host lê da configuração exatamente estas chaves: `peer.bind_host`, `timeouts.hello_deadline_ms`, `timeouts.peer_timeout_ms` e, opcionalmente, `debug.sim_loss` e `debug.sim_delay_ms`. O campo `config` da mensagem `MATCH_START` (largura, altura e `tick_ms`) é outra coisa: descreve a arena.
 
 ## 6. Como executar
 
-`[AJUSTAR]` Comandos (conferir com o código final):
+Todos os comandos são executados **a partir da raiz do projeto** (a pasta que contém `main.py`, `lobby/`, `peer/` e `common/`).
 
-**1. Lobby** (na máquina do servidor):
+### Principais comandos
+
+| Para quê | Comando |
+|----------|---------|
+| Subir o lobby | `python3 -m lobby.server` |
+| Entrar como jogador | `python3 main.py --name Alice --udp-port 6001 --lobby-host IP_DO_LOBBY` |
+| Ver a tela do jogo sem rede (demo local) | `python3 main.py --demo` |
+| Ver todas as opções | `python3 main.py --help` |
+| Rodar os testes automáticos | `python3 -m unittest discover -s tests` |
+| Rodar os testes do host e os cenários sem lobby | ver [seção 16](#16-cenários-de-teste) |
+
+Nos comandos, `python3` é o nome usual em Linux; em algumas instalações o equivalente é `python`.
+
+### Início rápido: uma máquina, quatro terminais
+
+Os padrões já servem para jogar na mesma máquina (lobby em `127.0.0.1:5000`). Só é preciso uma porta UDP **diferente** para cada jogador e um nome diferente:
 
 ```bash
-python3 -m lobby.server --config config.json
-# ou: python3 -m lobby.server --host 0.0.0.0 --port 5000
+# terminal 1: o lobby
+python3 -m lobby.server
+
+# terminais 2, 3 e 4: um jogador em cada
+python3 main.py --name Alice --udp-port 6001
+python3 main.py --name Bob   --udp-port 6002
+python3 main.py --name Carol --udp-port 6003
 ```
 
-**2. Jogadores** (um processo por jogador, na mesma máquina em portas distintas ou em máquinas diferentes):
+Para quatro jogadores, repita com `--name Dave --udp-port 6004`.
+
+### Passo a passo pelo lobby
+
+1. **Suba o lobby** (ele fica rodando e registra tudo em `logs/lobby.log`):
+   ```bash
+   python3 -m lobby.server
+   # ou, escolhendo a porta: python3 -m lobby.server --lobby-port 5000
+   ```
+2. **Entre como jogador** em cada terminal. Aparece o menu:
+   ```
+   == Menu ==
+     1) Criar partida
+     2) Listar partidas / entrar
+     3) Testar interface (demo local)
+     4) Sair
+   ```
+3. **O primeiro jogador cria a partida** (opção `1`): informa o nome da sala e o máximo de jogadores (3 ou 4). Ele vira o **host** e cai na sala de espera.
+4. **Os demais entram** (opção `2`): a lista mostra as partidas abertas; digite o número da partida. O host vê na sala quem entrou.
+5. **Com pelo menos 3 jogadores, o host aperta ENTER** para iniciar. Todos recebem o `MATCH_START`, aparece "PARTIDA INICIANDO!" e começa a contagem regressiva ("Começa em 3 s").
+6. **Jogue.** As teclas estão na [seção 7](#7-como-jogar).
+7. **No fim**, aperte uma tecla para ver o resultado. Depois de "FIM DA PARTIDA", ENTER volta ao menu, de onde dá para criar ou entrar em outra partida, ou sair (opção `4`).
+
+Na sala de espera, `q` + ENTER sai da sala (se quem sai é o criador, a sala é cancelada para todos).
+
+### Em máquinas diferentes
+
+1. **Descubra o IP da máquina do lobby**: `ip -br a` (ou `hostname -I`). Use o IP da rede local, algo como `192.168.0.10`.
+2. **Libere o firewall em todas as máquinas**: TCP `5000` no lobby e UDP `6001` a `6004` nos jogadores (por exemplo, `sudo ufw allow 5000/tcp` e `sudo ufw allow 6001:6004/udp`). O host manda os datagramas para a porta de cada jogador, então **cada jogador** também precisa liberar a sua.
+3. **Suba o lobby** na máquina escolhida: `python3 -m lobby.server`.
+4. **Em cada máquina de jogador**, aponte para o lobby:
+   ```bash
+   python3 main.py --name Alice --udp-port 6001 --lobby-host 192.168.0.10
+   ```
+5. Se a máquina tem mais de um IP (Wi-Fi e cabo, VPN, Docker), informe o IP certo com `--advertise-host 192.168.0.21`. Os endereços entregues no `MATCH_START` precisam ser **IPs numéricos alcançáveis** pelos outros jogadores.
+
+Algumas redes (Wi-Fi de campus, redes públicas) isolam os clientes entre si e impedem o jogo; nesse caso use um roteador próprio ou o hotspot de um celular.
+
+### Usando um `config.json`
+
+Em vez de repetir as opções, copie `config.example.json` para `config.json` e ajuste (`peer.name`, `peer.udp_port`, `lobby.host`). Para usar outro arquivo: `python3 main.py --config meu_config.json`. A linha de comando continua valendo por cima do arquivo.
+
+### Testes automáticos e logs
 
 ```bash
-python3 main.py --config config.json --name Alice --udp-port 6001
-python3 main.py --config config.json --name Bob   --udp-port 6002
-python3 main.py --config config.json --name Carol --udp-port 6003
-# sobrescrevendo o lobby: --lobby-host 192.168.0.10 --lobby-port 5000
+python3 -m unittest discover -s tests -v      # protocolo, configuração e demais testes da pasta tests/
 ```
 
-**3. Criar e iniciar a partida:**
+Cada processo grava o seu log em `logs/`: `logs/<nome do jogador>.log` (o do host traz os ciclos, eliminações e o resumo da partida) e `logs/lobby.log`. O arquivo é **sobrescrito a cada execução**: copie-o depois de cada cenário que for para o relatório (por exemplo, `cp logs/Alice.log logs/cenario_04.log`).
 
-1. Alice escolhe *Criar partida* (informa 3 ou 4 jogadores). Ela vira o host.
-2. Bob e Carol escolhem *Listar partidas* e *Entrar*.
-3. Quando houver pelo menos 3 jogadores, Alice escolhe *Iniciar*.
-4. Contagem regressiva e início.
+### Problemas comuns
 
-Execute sempre a partir da raiz do projeto. Em máquinas diferentes, use o IP real do lobby em `--lobby-host`; os endereços que o lobby entrega no `MATCH_START` precisam ser **IPs numéricos alcançáveis** pelos outros jogadores (`localhost` ou `0.0.0.0` quebram a validação de origem).
-
-**Opções de teste** (seção 16) `[AJUSTAR]`: `--sim-loss 0.2` (descarta 20% dos datagramas, nos dois sentidos) e `--sim-delay-ms 80` (atraso artificial) preenchem o bloco `sim` da configuração do **host**; como todo o tráfego da partida passa por ele, basta aplicá-los ali. O log do host fica em `logs/` (um arquivo por execução: copie-o depois de cada cenário que for para o relatório).
+| O que aparece | Causa e solução |
+|---------------|-----------------|
+| `ModuleNotFoundError: No module named 'common'` (ou `peer`) | O comando foi executado fora da raiz do projeto. Entre na pasta que contém `main.py` |
+| `python: comando não encontrado` | Use `python3` |
+| `Terminal pequeno: precisa de 78x23` | Aumente a janela do terminal (a tela do jogo precisa de pelo menos 80 × 24) |
+| `LOBBY INDISPONIVEL` | O lobby não está rodando, o IP/porta estão errados ou o firewall bloqueia o TCP |
+| `NAME_TAKEN: o nome ... já está em uso` | Outro jogador já usa esse `--name`. Escolha outro |
+| `outro jogador da sala já usa IP:porta; use outra --udp-port` | Dois jogadores na mesma máquina com a mesma porta UDP. Use `--udp-port` diferente em cada um |
+| `Erro de configuracao: chave desconhecida ...` | Erro de digitação no `config.json`. A mensagem diz qual chave |
+| A partida termina logo com "Partida encerrada." e o log do jogador diz `o host nao respondeu ao HELLO` | Os datagramas UDP não chegam ao host: firewall do host ou do jogador, IP errado ou rede que isola os clientes |
 
 ## 7. Como jogar
 
@@ -372,7 +442,7 @@ stateDiagram-v2
 | `CONNECTED` | `REGISTER`, `PONG` | `ERROR BAD_STATE` |
 | `REGISTERED` | `LIST_MATCHES`, `CREATE_MATCH`, `JOIN_MATCH`, `PONG` | `ERROR BAD_STATE` |
 | `IN_ROOM` | `LEAVE_MATCH`, `START_MATCH` (criador), `LIST_MATCHES`, `PONG` | `ERROR BAD_STATE` |
-| `IN_GAME` | `MATCH_END` (host, opcional) | ignorada. O lobby **não** envia `PING` a quem está em partida, e o fechamento da conexão é normal `[CONFERIR]` |
+| `IN_GAME` | `MATCH_END` (host, opcional) | ignorada. O lobby **não** envia `PING` a quem está em partida; um pedido de menu (`LIST_MATCHES`, `CREATE_MATCH` ou `JOIN_MATCH`) devolve o jogador ao menu |
 
 ### Jogador comum (peer ≠ host) durante a partida
 
@@ -577,17 +647,18 @@ Quando um peer não conecta, o que olhar:
 **Principais dificuldades encontradas**
 
 - *Host:* a deriva do relógio ao dormir um intervalo fixo por ciclo; o último datagrama perdido, que deixava um peer sem o resultado; um peer lento que desistia durante a espera dos demais (só apareceu ao testar com IPs diferentes); a validação de origem, que exige que cada peer envie do mesmo socket em que escuta; e o conflito entre `print` e a tela do terminal, resolvido com log em arquivo.
-- *Demais módulos:* `[PREENCHER ao final do desenvolvimento]`
+- 
 
 ## 18. Equipe
 
 | Nome | Matrícula | Responsabilidades |
 |------|-----------|-------------------|
-| Washington Xavier|252024622|peer/host.py e interfaces| 
-| LUIZ EDUARDO|252009134|common/protocol.py| 
-| PABLO RAFAEL|221003986|peer/client.py| 
-| SARA DA SILVA|202038281|common/game_logic.py| 
-|VITOR IVAN|231036309|lobby/server.py (TCP)|
+| Washington Xavier | 252024622 | **Host da partida** (`peer/host.py`): handshake, ciclo fixo, `TICK` com janela de `ack`, detecção de queda de jogadores, fim confiável e saída controlada. **Interfaces de terminal**: tela do jogo (`peer/ui.py`) e telas do lobby (`peer/lobby_ui.py`). Simulador de perda e atraso de rede (`common/simnet.py`) e scripts de teste do host (`testes_manuais/`) |
+| Luiz Eduardo | 252009134 | **Protocolo e fluxo do jogador**: codificação e validação das mensagens UDP e TCP (`common/protocol.py`), configuração (`common/config.py`), cliente do lobby (`peer/lobby_client.py`) e ponto de entrada com os menus e o fluxo do jogador (`main.py`). Testes de protocolo e de configuração |
+| Pablo Rafael | 221003986 | **Cliente da partida** (`peer/client.py`): jogador comum com handshake e reenvio do `HELLO`, `INPUT` a cada ciclo, aplicação dos `TICK` em ordem, detecção de queda do host e reação ao `ABORT`, confirmação do fim da partida |
+| Sara da Silva | 202038281 | **Regras do jogo** (`common/game_logic.py`): ciclo determinístico, colisões (parede, rastro e mesma célula), eliminação por desconexão, vitória e empate |
+| Vitor Ivan | 231036309 | **Servidor de lobby** (`lobby/server.py`, TCP): registro de jogadores, salas, entrega do `MATCH_START`, verificação de vida (`PING`) e tratamento de erros do protocolo |
+
 ---
 
-*Projeto acadêmico. Entrega final em 23/11/2026; apresentações a partir de 24/11/2026.*
+*Projeto acadêmico de Redes de Computadores. Entrega final em 23/11/2026; apresentações a partir de 24/11/2026.*
