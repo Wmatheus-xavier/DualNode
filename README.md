@@ -9,8 +9,6 @@ Trabalho prático de Redes de Computadores: projeto e implementação de um prot
 - **Transporte:** TCP (jogador ↔ lobby) e UDP (jogador ↔ jogador)
 - **Jogadores por partida:** 3 a 4, cada um em um processo separado
 
-> As partes marcadas com `[AJUSTAR]` ou `[CONFERIR]` dependem de detalhes do código final (nomes de arquivos, comandos) ou de decisões ainda não confirmadas entre os integrantes. O resto descreve o protocolo e o comportamento do host, que foram implementados e testados.
-
 ---
 
 ## Sumário
@@ -89,11 +87,15 @@ sequenceDiagram
     Note over L: lobby pode cair aqui sem afetar a partida
 ```
 
+<<<<<<< HEAD
 Depois do `MATCH_START`, **nenhuma mensagem de jogo passa pelo lobby**. Como o processo do jogador cuida da partida em um único laço e não atende o TCP durante ela, o lobby **não envia `PING` a quem está em partida** (estado `IN_GAME`). A conexão continua aberta: no fim, o host avisa com `MATCH_END` e os demais voltam ao menu com o primeiro pedido (seção 11). Se o lobby cair antes ou durante a partida, a partida em andamento não é afetada.
+=======
+Depois do `MATCH_START`, **nenhuma mensagem de jogo passa pelo lobby**. A conexão TCP do jogador com o lobby continua aberta, mas o processo do jogador cuida da partida em um único laço e não a atende durante ela; por isso o lobby **não envia `PING`** a quem está em partida (seção 11). Se o lobby cair durante a partida, ela não é afetada. Ao terminar, o host tenta enviar o `MATCH_END` ao lobby (melhor esforço) e os jogadores voltam ao menu.
+>>>>>>> 4aad2a3 (readme atalizado)
 
 ## 3. Estrutura do projeto
 
-`[AJUSTAR]` Estrutura do projeto:
+Estrutura do projeto:
 
 ```
 DualNode/
@@ -134,7 +136,7 @@ DualNode/
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt    # [AJUSTAR] (pode conter apenas windows-curses)
+pip install -r requirements.txt    # contém apenas windows-curses (só é instalado no Windows)
 ```
 
 ## 5. Configuração
@@ -186,7 +188,11 @@ O host lê da configuração exatamente estas chaves: `peer.bind_host`, `timeout
 
 ## 6. Como executar
 
+<<<<<<< HEAD
 Todos os comandos são executados **a partir da raiz do projeto** (a pasta que contém `main.py`, `lobby/`, `peer/` e `common/`).
+=======
+Comandos:
+>>>>>>> 4aad2a3 (readme atalizado)
 
 ### Principais comandos
 
@@ -267,6 +273,7 @@ Cada processo grava o seu log em `logs/`: `logs/<nome do jogador>.log` (o do hos
 
 ### Problemas comuns
 
+<<<<<<< HEAD
 | O que aparece | Causa e solução |
 |---------------|-----------------|
 | `ModuleNotFoundError: No module named 'common'` (ou `peer`) | O comando foi executado fora da raiz do projeto. Entre na pasta que contém `main.py` |
@@ -277,6 +284,11 @@ Cada processo grava o seu log em `logs/`: `logs/<nome do jogador>.log` (o do hos
 | `outro jogador da sala já usa IP:porta; use outra --udp-port` | Dois jogadores na mesma máquina com a mesma porta UDP. Use `--udp-port` diferente em cada um |
 | `Erro de configuracao: chave desconhecida ...` | Erro de digitação no `config.json`. A mensagem diz qual chave |
 | A partida termina logo com "Partida encerrada." e o log do jogador diz `o host nao respondeu ao HELLO` | Os datagramas UDP não chegam ao host: firewall do host ou do jogador, IP errado ou rede que isola os clientes |
+=======
+Execute sempre a partir da raiz do projeto. Em máquinas diferentes, use o IP real do lobby em `--lobby-host`; os endereços que o lobby entrega no `MATCH_START` precisam ser **IPs numéricos alcançáveis** pelos outros jogadores (`localhost` ou `0.0.0.0` quebram a validação de origem).
+
+**Opções de teste** (seção 16): `--sim-loss 0.2` (descarta 20% dos datagramas, nos dois sentidos) e `--sim-delay-ms 80` (atraso artificial) preenchem o bloco `sim` da configuração do **host**; como todo o tráfego da partida passa por ele, basta aplicá-los ali. Cada jogador grava seu log em `logs/<nome>.log` (os registros novos são acrescentados ao final do arquivo); o log de quem é o host traz os eventos da partida.
+>>>>>>> 4aad2a3 (readme atalizado)
 
 ## 7. Como jogar
 
@@ -442,7 +454,11 @@ stateDiagram-v2
 | `CONNECTED` | `REGISTER`, `PONG` | `ERROR BAD_STATE` |
 | `REGISTERED` | `LIST_MATCHES`, `CREATE_MATCH`, `JOIN_MATCH`, `PONG` | `ERROR BAD_STATE` |
 | `IN_ROOM` | `LEAVE_MATCH`, `START_MATCH` (criador), `LIST_MATCHES`, `PONG` | `ERROR BAD_STATE` |
+<<<<<<< HEAD
 | `IN_GAME` | `MATCH_END` (host, opcional) | ignorada. O lobby **não** envia `PING` a quem está em partida; um pedido de menu (`LIST_MATCHES`, `CREATE_MATCH` ou `JOIN_MATCH`) devolve o jogador ao menu |
+=======
+| `IN_GAME` | `MATCH_END` (host, opcional) | ignorada. O lobby **não** envia `PING` a quem está em partida, e o fechamento da conexão é tratado como normal |
+>>>>>>> 4aad2a3 (readme atalizado)
 
 ### Jogador comum (peer ≠ host) durante a partida
 
@@ -563,7 +579,7 @@ O ponto único de falha é aceito pelo enunciado, desde que a falha do host ence
 
 | Falha | Detecção | Comportamento |
 |-------|----------|---------------|
-| **Lobby cai antes do início** | Jogador: erro de TCP ou sem `PING` por `lobby_dead_ms` | Jogador informa que o lobby está indisponível; partidas ainda não iniciadas não prosseguem. |
+| **Lobby cai antes do início** | Jogador: erro de TCP ou sem `PING` por `lobby_dead_ms` | Jogador informa que o lobby está indisponível; partidas ainda não iniciadas não prosseguem. Com o lobby de volta, a primeira ação no menu pode avisar "LOBBY INDISPONIVEL" (a conexão antiga estava morta); ela é fechada e a ação seguinte reconecta e registra o jogador de novo. |
 | **Lobby cai durante a partida** | Não afeta a partida | O jogo não usa o TCP do lobby depois do `MATCH_START`. |
 | **Peer cai durante a partida** (processo morto, rede) | Host: sem `INPUT` válido por `peer_timeout_ms` (3 s) | Host elimina a moto com `DISC` no próximo ciclo, **uma vez só**; o rastro permanece e a partida continua. Depois disso, deixa de enviar `TICK` a ele e ignora seus datagramas. Se sobrar só o host, ele vence. |
 | **Peer não se apresenta** | Host: sem `HELLO` por `hello_deadline_ms` | `DISC` no ciclo 1. Se **nenhum** peer se apresentar, `ABORT` com o motivo `jogadores insuficientes`. |
@@ -598,7 +614,7 @@ Registrar logs/capturas de cada cenário no relatório técnico. O critério de 
 | 12 | **Máquinas diferentes** | Lobby e jogadores em máquinas distintas da mesma rede | Mesmo comportamento do cenário 1 |
 | 13 | **Cancelamento na sala** | Criador sai antes de iniciar | `MATCH_CANCELLED` para os demais |
 
-### Testes do módulo do host (sem o lobby) `[CONFERIR: testes_manuais/ está no repositório]`
+### Testes do módulo do host (sem o lobby)
 
 A pasta `testes_manuais/` traz scripts que exercitam o host e o cliente sem depender do lobby, com um arquivo `match_start.json` no mesmo formato da mensagem `MATCH_START`. Rodar sempre a partir da raiz, com `python3 -m`, **sem** a extensão `.py`:
 
@@ -647,12 +663,16 @@ Quando um peer não conecta, o que olhar:
 **Principais dificuldades encontradas**
 
 - *Host:* a deriva do relógio ao dormir um intervalo fixo por ciclo; o último datagrama perdido, que deixava um peer sem o resultado; um peer lento que desistia durante a espera dos demais (só apareceu ao testar com IPs diferentes); a validação de origem, que exige que cada peer envie do mesmo socket em que escuta; e o conflito entre `print` e a tela do terminal, resolvido com log em arquivo.
+<<<<<<< HEAD
 - 
+=======
+>>>>>>> 4aad2a3 (readme atalizado)
 
 ## 18. Equipe
 
 | Nome | Matrícula | Responsabilidades |
 |------|-----------|-------------------|
+<<<<<<< HEAD
 | Washington Xavier | 252024622 | **Host da partida** (`peer/host.py`): handshake, ciclo fixo, `TICK` com janela de `ack`, detecção de queda de jogadores, fim confiável e saída controlada. **Interfaces de terminal**: tela do jogo (`peer/ui.py`) e telas do lobby (`peer/lobby_ui.py`). Simulador de perda e atraso de rede (`common/simnet.py`) e scripts de teste do host (`testes_manuais/`) |
 | Luiz Eduardo | 252009134 | **Protocolo e fluxo do jogador**: codificação e validação das mensagens UDP e TCP (`common/protocol.py`), configuração (`common/config.py`), cliente do lobby (`peer/lobby_client.py`) e ponto de entrada com os menus e o fluxo do jogador (`main.py`). Testes de protocolo e de configuração |
 | Pablo Rafael | 221003986 | **Cliente da partida** (`peer/client.py`): jogador comum com handshake e reenvio do `HELLO`, `INPUT` a cada ciclo, aplicação dos `TICK` em ordem, detecção de queda do host e reação ao `ABORT`, confirmação do fim da partida |
@@ -662,3 +682,16 @@ Quando um peer não conecta, o que olhar:
 ---
 
 *Projeto acadêmico de Redes de Computadores. Entrega final em 23/11/2026; apresentações a partir de 24/11/2026.*
+=======
+| Washington Matheus Almeida Xavier | 252024622 | `peer/host.py` e interfaces |
+| Luiz Eduardo Nandes Duarte | 202009134 | `common/protocol.py` |
+| Pablo Rafael Nunes Oliveira | 221003986 | `peer/client.py` |
+| Sara da Silva Menezes | 202038281 | `common/game_logic.py` |
+| Vitor Ivan Gonçalves de Oliveira | 231036309 | `lobby/server.py` (TCP) |
+
+Universidade de Brasília, disciplina de Redes de Computadores. Professor Roberto Vitor Rodrigues Filho. Grupo B7.
+
+---
+
+*Projeto acadêmico da disciplina de Redes de Computadores.*
+>>>>>>> 4aad2a3 (readme atalizado)
